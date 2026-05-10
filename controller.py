@@ -5,6 +5,11 @@ from view import Screen
 class GameController:
     def __init__(self):
         pygame.init()
+        pygame.mixer.init()
+
+        pygame.mixer.music.load('assets/sounds/bg.mp3')
+        pygame.mixer.music.set_volume(0.4)
+        pygame.mixer.music.play(-1)
 
         self.view = Screen()
 
