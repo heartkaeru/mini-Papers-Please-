@@ -1,26 +1,26 @@
-from __future__ import annotations
-
 import random
 import re
 from datetime import date, timedelta
 from enum import Enum
 from typing import List, Optional, Tuple, Union
 
+import config
+
 
 class Decision(Enum):
-    ALLOW = "allow"
-    DENY = "deny"
+    ALLOW = config.DECISION_ALLOW
+    DENY = config.DECISION_DENY
 
 
 class GameRules:
     def __init__(
         self,
-        min_age: int = 16,
-        group_pattern: str = r"^[А-Я]{2}-\d{6}$",
-        valid_group_prefixes: Tuple[str, ...] = ("ИС", "ПИ", "БИ", "ЭК", "МТ"),
-        reward_for_correct_decision: int = 10,
-        fine_for_mistake: int = 5,
-        prison_balance_limit: int = -50,
+        min_age: int = config.DEFAULT_MIN_AGE,
+        group_pattern: str = config.GROUP_PATTERN,
+        valid_group_prefixes: Tuple[str, ...] = config.VALID_GROUP_PREFIXES,
+        reward_for_correct_decision: int = config.DEFAULT_REWARD,
+        fine_for_mistake: int = config.DEFAULT_FINE,
+        dismissal_balance_limit: int = config.DEFAULT_DISMISSAL_BALANCE,
         current_date: Optional[date] = None,
     ):
         self.min_age = min_age
@@ -28,22 +28,27 @@ class GameRules:
         self.valid_group_prefixes = valid_group_prefixes
         self.reward_for_correct_decision = reward_for_correct_decision
         self.fine_for_mistake = fine_for_mistake
-        self.prison_balance_limit = prison_balance_limit
+        self.dismissal_balance_limit = dismissal_balance_limit
         self.current_date = current_date or date.today()
 
     def instruction_lines(self) -> List[str]:
         prefixes = ", ".join(self.valid_group_prefixes)
         return [
-            "Пропускать только людей с пропуском.",
-            "Срок действия пропуска не должен быть истекшим.",
-            f"Возраст посетителя должен быть от {self.min_age} лет.",
-            f"Группа должна иметь формат АА-000000 и начинаться с: {prefixes}.",
-            "Данные в пропуске должны совпадать с данными посетителя.",
+            config.INSTRUCTION_HAS_DOCUMENT,
+            config.INSTRUCTION_NOT_EXPIRED,
+            config.INSTRUCTION_MIN_AGE.format(min_age=self.min_age),
+            config.INSTRUCTION_GROUP.format(prefixes=prefixes),
+            config.INSTRUCTION_DATA_MATCH,
         ]
 
 
 class Economy:
-    def __init__(self, money: int = 0, reward: int = 10, fine_amount: int = 5):
+    def __init__(
+        self,
+        money: int = config.DEFAULT_MONEY,
+        reward: int = config.DEFAULT_REWARD,
+        fine_amount: int = config.DEFAULT_FINE,
+    ):
         self.money = money
         self.reward = reward
         self.fine_amount = fine_amount
@@ -68,7 +73,7 @@ class Document:
     def __init__(
         self,
         name: str = "",
-        age: int = 0,
+        age: int = config.DEFAULT_AGE,
         group: str = "",
         valid_until: Optional[date] = None,
     ):
@@ -84,15 +89,15 @@ class Document:
 
     def display_valid_until(self) -> str:
         if self.valid_until is None:
-            return "нет данных"
-        return self.valid_until.strftime("%d.%m.%Y")
+            return config.NO_DATE_TEXT
+        return self.valid_until.strftime(config.DATE_FORMAT)
 
 
 class Person:
     def __init__(
         self,
         name: str = "",
-        age: int = 0,
+        age: int = config.DEFAULT_AGE,
         group: str = "",
         document: Optional[Document] = None,
         is_important: bool = False,
@@ -105,20 +110,20 @@ class Person:
 
     def display_data(self) -> List[str]:
         return [
-            f"Имя: {self.name}",
-            f"Возраст: {self.age}",
-            f"Группа: {self.group}",
+            f"{config.PERSON_NAME_TEXT}: {self.name}",
+            f"{config.PERSON_AGE_TEXT}: {self.age}",
+            f"{config.PERSON_GROUP_TEXT}: {self.group}",
         ]
 
     def document_data(self) -> List[str]:
         if self.document is None:
-            return ["Пропуска нет"]
+            return [config.NO_DOCUMENT_TEXT]
 
         return [
-            f"Имя: {self.document.name}",
-            f"Возраст: {self.document.age}",
-            f"Группа: {self.document.group}",
-            f"Действителен до: {self.document.display_valid_until()}",
+            f"{config.PERSON_NAME_TEXT}: {self.document.name}",
+            f"{config.PERSON_AGE_TEXT}: {self.document.age}",
+            f"{config.PERSON_GROUP_TEXT}: {self.document.group}",
+            f"{config.DOCUMENT_VALID_UNTIL_TEXT}: {self.document.display_valid_until()}",
         ]
 
 
@@ -154,32 +159,22 @@ class PersonGenerator:
     def __init__(self, rules: Optional[GameRules] = None, seed: Optional[int] = None):
         self.rules = rules or GameRules()
         self.random = random.Random(seed)
-        self.names = [
-            "Артур",
-            "Саша",
-            "Данил",
-            "Алина",
-            "Мария",
-            "Илья",
-            "Кирилл",
-            "Вика",
-            "Егор",
-        ]
+        self.names = config.PERSON_NAMES
         self.invalid_reasons = [
-            "no_document",
-            "expired_document",
-            "too_young",
-            "bad_group_format",
-            "bad_group_prefix",
-            "wrong_name",
-            "wrong_age",
-            "wrong_group",
+            config.NO_DOCUMENT,
+            config.EXPIRED_DOCUMENT,
+            config.TOO_YOUNG,
+            config.BAD_GROUP_FORMAT,
+            config.BAD_GROUP_PREFIX_ERROR,
+            config.WRONG_NAME,
+            config.WRONG_AGE,
+            config.WRONG_GROUP,
         ]
 
     def generate(self) -> Person:
         person = self._generate_valid_person()
 
-        should_be_invalid = self.random.random() < 0.45
+        should_be_invalid = self.random.random() < config.INVALID_PERSON_CHANCE
         if should_be_invalid:
             self._apply_random_error(person)
 
@@ -187,9 +182,10 @@ class PersonGenerator:
 
     def _generate_valid_person(self) -> Person:
         name = self.random.choice(self.names)
-        age = self.random.randint(self.rules.min_age, 30)
+        age = self.random.randint(self.rules.min_age, config.DEFAULT_MAX_AGE)
         group = self._generate_valid_group()
-        valid_until = self.rules.current_date + timedelta(days=self.random.randint(1, 120))
+        valid_days = self.random.randint(config.MIN_PASS_DAYS, config.MAX_PASS_DAYS)
+        valid_until = self.rules.current_date + timedelta(days=valid_days)
 
         return Person(
             name=name,
@@ -206,7 +202,7 @@ class PersonGenerator:
     def _apply_random_error(self, person: Person) -> None:
         reason = self.random.choice(self.invalid_reasons)
 
-        if reason == "no_document":
+        if reason == config.NO_DOCUMENT:
             person.document = None
             return
 
@@ -214,27 +210,30 @@ class PersonGenerator:
         if document is None:
             return
 
-        if reason == "expired_document":
-            document.valid_until = self.rules.current_date - timedelta(days=self.random.randint(1, 60))
-        elif reason == "too_young":
-            person.age = self.random.randint(10, self.rules.min_age - 1)
+        if reason == config.EXPIRED_DOCUMENT:
+            expired_days = self.random.randint(config.MIN_PASS_DAYS, config.MAX_EXPIRED_DAYS)
+            document.valid_until = self.rules.current_date - timedelta(days=expired_days)
+        elif reason == config.TOO_YOUNG:
+            person.age = self.random.randint(config.MIN_TOO_YOUNG_AGE, self.rules.min_age - 1)
             document.age = person.age
-        elif reason == "bad_group_format":
-            document.group = self.random.choice(["123456", "АА123456", "A1-000001", "ГРУППА"])
-        elif reason == "bad_group_prefix":
-            document.group = f"ЮР-{self.random.randint(100000, 999999)}"
-        elif reason == "wrong_name":
+        elif reason == config.BAD_GROUP_FORMAT:
+            document.group = self.random.choice(config.BAD_GROUP_VARIANTS)
+        elif reason == config.BAD_GROUP_PREFIX_ERROR:
+            group_number = self.random.randint(config.MIN_GROUP_NUMBER, config.MAX_GROUP_NUMBER)
+            document.group = f"{config.BAD_GROUP_PREFIX}{config.GROUP_SEPARATOR}{group_number}"
+        elif reason == config.WRONG_NAME:
             possible_names = [name for name in self.names if name != person.name]
             document.name = self.random.choice(possible_names)
-        elif reason == "wrong_age":
-            document.age = person.age + self.random.choice([-2, -1, 1, 2])
-        elif reason == "wrong_group":
+        elif reason == config.WRONG_AGE:
+            document.age = person.age + self.random.choice(config.AGE_MISTAKE_VARIANTS)
+        elif reason == config.WRONG_GROUP:
             document.group = self._generate_valid_group(exclude=person.group)
 
     def _generate_valid_group(self, exclude: Optional[str] = None) -> str:
         while True:
             prefix = self.random.choice(self.rules.valid_group_prefixes)
-            group = f"{prefix}-{self.random.randint(100000, 999999)}"
+            group_number = self.random.randint(config.MIN_GROUP_NUMBER, config.MAX_GROUP_NUMBER)
+            group = f"{prefix}{config.GROUP_SEPARATOR}{group_number}"
             if group != exclude:
                 return group
 
@@ -245,23 +244,24 @@ class Checker:
 
     def check_exists(self, person: Person, errors: List[str]) -> None:
         if person.document is None:
-            errors.append("Нет пропуска")
+            errors.append(config.ERROR_NO_DOCUMENT)
 
     def check_expired(self, person: Person, errors: List[str]) -> None:
-        if person.document is not None and person.document.is_expired(self.rules.current_date):
-            errors.append("Срок действия пропуска истёк")
+        if person.document is not None:
+            if person.document.is_expired(self.rules.current_date):
+                errors.append(config.ERROR_EXPIRED_DOCUMENT)
 
     def check_age(self, person: Person, errors: List[str]) -> None:
         if person.age < self.rules.min_age:
-            errors.append("Посетитель младше допустимого возраста")
+            errors.append(config.ERROR_TOO_YOUNG)
 
     def check_name(self, person: Person, errors: List[str]) -> None:
         if person.document is not None and person.document.name != person.name:
-            errors.append("Имя в пропуске не совпадает")
+            errors.append(config.ERROR_WRONG_NAME)
 
     def check_document_age(self, person: Person, errors: List[str]) -> None:
         if person.document is not None and person.document.age != person.age:
-            errors.append("Возраст в пропуске не совпадает")
+            errors.append(config.ERROR_WRONG_AGE)
 
     def check_group(self, person: Person, errors: List[str]) -> None:
         if person.document is None:
@@ -270,15 +270,15 @@ class Checker:
         group = person.document.group
 
         if not re.match(self.rules.group_pattern, group):
-            errors.append("Неверный формат группы")
+            errors.append(config.ERROR_BAD_GROUP_FORMAT)
             return
 
-        prefix = group.split("-", 1)[0]
+        prefix = group.split(config.GROUP_SEPARATOR, config.GROUP_SPLIT_MAX_COUNT)[0]
         if prefix not in self.rules.valid_group_prefixes:
-            errors.append("Группа не относится к институту")
+            errors.append(config.ERROR_BAD_GROUP_PREFIX)
 
         if group != person.group:
-            errors.append("Группа в пропуске не совпадает")
+            errors.append(config.ERROR_WRONG_GROUP)
 
     def check_all(self, person: Person) -> Tuple[bool, List[str]]:
         errors: List[str] = []
@@ -333,9 +333,9 @@ class GameModel:
 
     def decide(self, decision: Union[Decision, str, bool]) -> RoundResult:
         if self.current_person is None:
-            raise RuntimeError("Нельзя принять решение: нет текущего посетителя")
+            raise RuntimeError(config.MESSAGE_NO_CURRENT_PERSON)
         if self.game_over:
-            raise RuntimeError("Игра окончена")
+            raise RuntimeError(config.MESSAGE_GAME_ALREADY_OVER)
 
         player_decision = self._normalize_decision(decision)
         check_result = self.checker.get_result(self.current_person)
@@ -343,9 +343,9 @@ class GameModel:
         is_correct = player_decision == correct_decision
         money_delta = self.economy.apply_result(is_correct)
 
-        if self.economy.money <= self.rules.prison_balance_limit:
+        if self.economy.money <= self.rules.dismissal_balance_limit:
             self.game_over = True
-            self.game_over_reason = "Долги слишком большие: чел навсегда попадает в тюрьму к Марвину"
+            self.game_over_reason = config.MESSAGE_DISMISSED
 
         result = RoundResult(
             player_decision=player_decision,
@@ -383,12 +383,10 @@ class GameModel:
             return Decision.ALLOW if decision else Decision.DENY
 
         value = decision.strip().lower()
-        allow_values = {"allow", "accept", "pass", "пропустить", "допустить"}
-        deny_values = {"deny", "reject", "kick", "вышвырнуть", "отказать", "не пропустить"}
 
-        if value in allow_values:
+        if value in config.ALLOW_DECISIONS:
             return Decision.ALLOW
-        if value in deny_values:
+        if value in config.DENY_DECISIONS:
             return Decision.DENY
 
-        raise ValueError(f"Неизвестное решение игрока: {decision}")
+        raise ValueError(config.MESSAGE_UNKNOWN_DECISION.format(decision=decision))
