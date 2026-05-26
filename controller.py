@@ -1,4 +1,9 @@
+import json
+import os
+
 import pygame
+
+import config
 from view import Screen
 
 
@@ -7,20 +12,284 @@ class GameController:
         pygame.init()
         pygame.mixer.init()
 
-        pygame.mixer.music.load('assets/sounds/bg.mp3')
-        pygame.mixer.music.set_volume(0.4)
+        settings = self.load_settings()
+
+        pygame.mixer.music.load(config.MUSIC_PATH)
+        pygame.mixer.music.set_volume(settings[config.SETTING_MUSIC_VOLUME])
         pygame.mixer.music.play(-1)
 
         self.view = Screen()
+        self.screen_name = config.SCREEN_MENU
+        self.music_enabled = settings[config.SETTING_MUSIC_ENABLED]
+        self.sound_enabled = settings[config.SETTING_SOUND_ENABLED]
+        self.music_volume = settings[config.SETTING_MUSIC_VOLUME]
+        self.sound_volume = settings[config.SETTING_SOUND_VOLUME]
+        self.window_mode_number = settings[config.SETTING_WINDOW_MODE_NUMBER]
+        self.game_started = False
+        self.active_slider = None
+
+        if not self.music_enabled:
+            pygame.mixer.music.pause()
+
+        self.apply_window_mode()
 
     def run(self):
         while self.view.running:
             self.handle_events()
-            self.view.draw()
+            self.draw_current_screen()
 
         pygame.quit()
+
+    def draw_current_screen(self):
+        if self.screen_name == config.SCREEN_MENU:
+            self.view.draw_menu(self.has_save())
+        elif self.screen_name == config.SCREEN_SETTINGS:
+            self.view.draw_settings(
+                self.music_enabled,
+                self.sound_enabled,
+                self.music_volume,
+                self.sound_volume,
+                self.get_window_mode_text(),
+            )
+        elif self.screen_name == config.SCREEN_GAME:
+            self.view.draw_game()
 
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                self.save_settings()
                 self.view.running = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.handle_escape()
+            elif event.type == pygame.VIDEORESIZE:
+                if self.is_windowed_mode():
+                    self.view.set_window_size(event.w, event.h)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self.handle_mouse_down(event.pos)
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.handle_mouse_up()
+            elif event.type == pygame.MOUSEMOTION and self.active_slider is not None:
+                self.handle_slider_drag(event.pos)
+
+    def handle_escape(self):
+        if self.screen_name == config.SCREEN_GAME:
+            self.screen_name = config.SCREEN_MENU
+        elif self.screen_name == config.SCREEN_MENU and self.game_started:
+            self.screen_name = config.SCREEN_GAME
+        elif self.screen_name == config.SCREEN_SETTINGS:
+            self.screen_name = config.SCREEN_MENU
+
+    def handle_mouse_down(self, mouse_pos):
+        if self.screen_name == config.SCREEN_MENU:
+            self.handle_menu_click(mouse_pos)
+        elif self.screen_name == config.SCREEN_SETTINGS:
+            self.handle_settings_click(mouse_pos)
+
+    def handle_menu_click(self, mouse_pos):
+        buttons = self.view.menu_buttons
+
+        if buttons[config.BUTTON_START].collidepoint(mouse_pos):
+            self.start_game()
+        elif buttons[config.BUTTON_CONTINUE].collidepoint(mouse_pos) and self.has_save():
+            self.continue_game()
+        elif buttons[config.BUTTON_SETTINGS].collidepoint(mouse_pos):
+            self.screen_name = config.SCREEN_SETTINGS
+        elif buttons[config.BUTTON_EXIT].collidepoint(mouse_pos):
+            self.save_settings()
+            self.view.running = False
+
+    def handle_settings_click(self, mouse_pos):
+        buttons = self.view.settings_buttons
+
+        if buttons[config.BUTTON_MUSIC].collidepoint(mouse_pos):
+            self.toggle_music()
+        elif self.slider_has_mouse(config.SLIDER_MUSIC_VOLUME, mouse_pos):
+            self.active_slider = config.SLIDER_MUSIC_VOLUME
+            self.set_music_volume_by_mouse(mouse_pos)
+        elif buttons[config.BUTTON_SOUND].collidepoint(mouse_pos):
+            self.toggle_sound()
+        elif self.slider_has_mouse(config.SLIDER_SOUND_VOLUME, mouse_pos):
+            self.active_slider = config.SLIDER_SOUND_VOLUME
+            self.set_sound_volume_by_mouse(mouse_pos)
+        elif buttons[config.BUTTON_WINDOW_SIZE].collidepoint(mouse_pos):
+            self.change_window_size()
+        elif buttons[config.BUTTON_BACK].collidepoint(mouse_pos):
+            self.screen_name = config.SCREEN_MENU
+
+    def handle_mouse_up(self):
+        if self.active_slider is not None:
+            self.save_settings()
+            self.active_slider = None
+
+    def handle_slider_drag(self, mouse_pos):
+        if self.active_slider == config.SLIDER_MUSIC_VOLUME:
+            self.set_music_volume_by_mouse(mouse_pos)
+        elif self.active_slider == config.SLIDER_SOUND_VOLUME:
+            self.set_sound_volume_by_mouse(mouse_pos)
+
+    def start_game(self):
+        self.game_started = True
+        self.screen_name = config.SCREEN_GAME
+
+    def continue_game(self):
+        self.game_started = True
+        self.screen_name = config.SCREEN_GAME
+
+    def has_save(self):
+        return os.path.exists(config.SAVE_FILE)
+
+    def toggle_music(self):
+        self.music_enabled = not self.music_enabled
+
+        if self.music_enabled:
+            pygame.mixer.music.unpause()
+        else:
+            pygame.mixer.music.pause()
+
+        self.save_settings()
+
+    def toggle_sound(self):
+        self.sound_enabled = not self.sound_enabled
+        self.save_settings()
+
+    def set_music_volume_by_mouse(self, mouse_pos):
+        self.music_volume = self.get_volume_from_slider(config.SLIDER_MUSIC_VOLUME, mouse_pos)
+        pygame.mixer.music.set_volume(self.music_volume)
+
+    def set_sound_volume_by_mouse(self, mouse_pos):
+        self.sound_volume = self.get_volume_from_slider(config.SLIDER_SOUND_VOLUME, mouse_pos)
+
+    def slider_has_mouse(self, slider_name, mouse_pos):
+        slider = self.view.settings_sliders[slider_name]
+        hit_box = slider.inflate(0, config.SLIDER_KNOB_HEIGHT)
+        return hit_box.collidepoint(mouse_pos)
+
+    def get_volume_from_slider(self, slider_name, mouse_pos):
+        slider = self.view.settings_sliders[slider_name]
+        volume = (mouse_pos[0] - slider.x) / slider.width
+
+        if volume > config.MAX_VOLUME:
+            return config.MAX_VOLUME
+        if volume < config.MIN_VOLUME:
+            return config.MIN_VOLUME
+
+        return round(volume, config.VOLUME_ROUND_DIGITS)
+
+    def change_window_size(self):
+        self.window_mode_number += 1
+        if self.window_mode_number >= len(config.WINDOW_MODES):
+            self.window_mode_number = 0
+
+        self.apply_window_mode()
+        self.save_settings()
+
+    def apply_window_mode(self):
+        mode = config.WINDOW_MODES[self.window_mode_number]
+        mode_type = mode[config.WINDOW_MODE_TYPE_INDEX]
+        width = mode[config.WINDOW_MODE_WIDTH_INDEX]
+        height = mode[config.WINDOW_MODE_HEIGHT_INDEX]
+
+        self.view.set_window_mode(mode_type, width, height)
+
+    def get_window_mode_text(self):
+        mode = config.WINDOW_MODES[self.window_mode_number]
+        return mode[config.WINDOW_MODE_TEXT_INDEX]
+
+    def is_windowed_mode(self):
+        mode = config.WINDOW_MODES[self.window_mode_number]
+        return mode[config.WINDOW_MODE_TYPE_INDEX] == config.WINDOW_MODE_WINDOWED
+
+    def load_settings(self):
+        settings = self.get_default_settings()
+
+        if not os.path.exists(config.SETTINGS_FILE):
+            return settings
+
+        try:
+            with open(config.SETTINGS_FILE, "r", encoding=config.SETTINGS_ENCODING) as file:
+                saved_settings = json.load(file)
+        except (OSError, ValueError):
+            return settings
+
+        if not isinstance(saved_settings, dict):
+            return settings
+
+        for key in settings:
+            if key in saved_settings:
+                settings[key] = saved_settings[key]
+
+        settings[config.SETTING_MUSIC_ENABLED] = self.fix_bool(
+            settings[config.SETTING_MUSIC_ENABLED],
+            config.DEFAULT_MUSIC_ENABLED,
+        )
+        settings[config.SETTING_SOUND_ENABLED] = self.fix_bool(
+            settings[config.SETTING_SOUND_ENABLED],
+            config.DEFAULT_SOUND_ENABLED,
+        )
+        settings[config.SETTING_MUSIC_VOLUME] = self.fix_volume(
+            settings[config.SETTING_MUSIC_VOLUME],
+            config.DEFAULT_MUSIC_VOLUME,
+        )
+        settings[config.SETTING_SOUND_VOLUME] = self.fix_volume(
+            settings[config.SETTING_SOUND_VOLUME],
+            config.DEFAULT_SOUND_VOLUME,
+        )
+        settings[config.SETTING_WINDOW_MODE_NUMBER] = self.fix_window_mode_number(
+            settings[config.SETTING_WINDOW_MODE_NUMBER]
+        )
+
+        return settings
+
+    def save_settings(self):
+        settings = {
+            config.SETTING_MUSIC_ENABLED: self.music_enabled,
+            config.SETTING_SOUND_ENABLED: self.sound_enabled,
+            config.SETTING_MUSIC_VOLUME: self.music_volume,
+            config.SETTING_SOUND_VOLUME: self.sound_volume,
+            config.SETTING_WINDOW_MODE_NUMBER: self.window_mode_number,
+        }
+
+        with open(
+            config.SETTINGS_FILE,
+            "w",
+            encoding=config.SETTINGS_ENCODING,
+            newline="\r\n",
+        ) as file:
+            json.dump(settings, file, ensure_ascii=False, indent=4)
+
+    def get_default_settings(self):
+        return {
+            config.SETTING_MUSIC_ENABLED: config.DEFAULT_MUSIC_ENABLED,
+            config.SETTING_SOUND_ENABLED: config.DEFAULT_SOUND_ENABLED,
+            config.SETTING_MUSIC_VOLUME: config.DEFAULT_MUSIC_VOLUME,
+            config.SETTING_SOUND_VOLUME: config.DEFAULT_SOUND_VOLUME,
+            config.SETTING_WINDOW_MODE_NUMBER: config.DEFAULT_WINDOW_MODE_NUMBER,
+        }
+
+    def fix_bool(self, value, default_value):
+        if not isinstance(value, bool):
+            return default_value
+
+        return value
+
+    def fix_volume(self, volume, default_volume):
+        if isinstance(volume, bool):
+            return default_volume
+        if not isinstance(volume, int) and not isinstance(volume, float):
+            return default_volume
+        if volume < config.MIN_VOLUME:
+            return config.MIN_VOLUME
+        if volume > config.MAX_VOLUME:
+            return config.MAX_VOLUME
+
+        return round(volume, config.VOLUME_ROUND_DIGITS)
+
+    def fix_window_mode_number(self, number):
+        if isinstance(number, bool):
+            return config.DEFAULT_WINDOW_MODE_NUMBER
+        if not isinstance(number, int):
+            return config.DEFAULT_WINDOW_MODE_NUMBER
+        if number < 0 or number >= len(config.WINDOW_MODES):
+            return config.DEFAULT_WINDOW_MODE_NUMBER
+
+        return number

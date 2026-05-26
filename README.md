@@ -1,1 +1,1 @@
-# mini-Papers-Please-
+# RADIK, PLEASE!
