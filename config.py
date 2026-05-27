@@ -22,7 +22,7 @@ MAX_GROUP_NUMBER = 999999
 GROUP_SEPARATOR = "-"
 GROUP_SPLIT_MAX_COUNT = 1
 GROUP_PATTERN = r"^[А-ЯЁ]{2}-\d{6}$"
-VALID_GROUP_PREFIXES = ("ИС", "ПИ", "БИ", "ЭК", "МТ")
+VALID_GROUP_PREFIXES = ("РИ", "ИС", "ПИ", "БИ", "ЭК", "МТ")
 BAD_GROUP_PREFIX = "ЮР"
 BAD_GROUP_VARIANTS = ("123456", "АА123456", "A1-000001", "ГРУППА")
 
@@ -492,13 +492,14 @@ ISSUE_DATE_TEXT = "Дата выдачи"
 NO_DOCUMENT_TEXT = "Студенческого билета нет"
 
 INSTRUCTION_HAS_DOCUMENT = "Пропускать только людей со студенческим билетом."
-INSTRUCTION_BIRTH_YEAR = "Год рождения должен быть {max_year} или раньше."
-INSTRUCTION_ISSUE_DATE = "Дата выдачи должна быть 01.09 через 17 или 18 лет после рождения."
-INSTRUCTION_GROUP = "Группа должна иметь формат АА-000000 и начинаться с: {prefixes}."
-INSTRUCTION_EDUCATION_FORM = "Форма обучения должна быть одной из: {forms}."
-INSTRUCTION_EDUCATION_LEVEL = "Уровень обучения должен быть одним из: {levels}."
-INSTRUCTION_INSTITUTE = "Институт должен быть одним из: {institutes}."
-INSTRUCTION_FULL_NAME = "ФИО в студенческом билете пока не проверяется."
+INSTRUCTION_BIRTH_YEAR = "Дата рождения: год должен быть {max_year} или раньше."
+INSTRUCTION_ISSUE_DATE = "Дата выдачи: только 01.09, через 17 или 18 лет после года рождения."
+INSTRUCTION_GROUP = "Группа: формат АА-000000, первые буквы только из списка: {prefixes}."
+INSTRUCTION_EDUCATION_FORM = "Форма обучения: только {forms}."
+INSTRUCTION_EDUCATION_LEVEL = "Уровень обучения: только {levels}."
+INSTRUCTION_INSTITUTE = "Институт: только {institutes}."
+INSTRUCTION_FULL_NAME = "ФИО должно быть в билете, но пока не является причиной отказа."
+INSTRUCTION_ALLOW_DENY = "Если все верно, нажми печать. Если есть ошибка или билета нет, нажми красный круг."
 
 ERROR_NO_DOCUMENT = "Нет студенческого билета"
 ERROR_BAD_BIRTH_DATE = "Неверная дата рождения"
@@ -533,9 +534,10 @@ MIN_VOLUME = 0.0
 MAX_VOLUME = 1.0
 VOLUME_ROUND_DIGITS = 2
 VOLUME_PERCENT = 100
+FONT_NAME = "segoeui"
 
-DEFAULT_WINDOW_WIDTH = 1200
-DEFAULT_WINDOW_HEIGHT = 800
+DEFAULT_WINDOW_WIDTH = 1536
+DEFAULT_WINDOW_HEIGHT = 1024
 WINDOW_MODE_TYPE_INDEX = 0
 WINDOW_MODE_TEXT_INDEX = 1
 WINDOW_MODE_WIDTH_INDEX = 2
@@ -544,13 +546,9 @@ WINDOW_MODE_WINDOWED = "windowed"
 WINDOW_MODE_FULLSCREEN = "fullscreen"
 WINDOW_MODE_BORDERED_FULLSCREEN = "bordered_fullscreen"
 WINDOW_MODES = (
-    (WINDOW_MODE_WINDOWED, "900x600", 900, 600),
-    (WINDOW_MODE_WINDOWED, "1200x800", 1200, 800),
-    (WINDOW_MODE_WINDOWED, "1536x1024", 1536, 1024),
-    (WINDOW_MODE_FULLSCREEN, "Полный экран", 0, 0),
     (WINDOW_MODE_BORDERED_FULLSCREEN, "Полный экран с рамками", 0, 0),
 )
-DEFAULT_WINDOW_MODE_NUMBER = 1
+DEFAULT_WINDOW_MODE_NUMBER = 0
 
 SCREEN_MENU = "menu"
 SCREEN_SETTINGS = "settings"
@@ -592,6 +590,8 @@ MUSIC_VOLUME_TEXT = "Громкость музыки: {volume}%"
 SOUND_VOLUME_TEXT = "Громкость звука: {volume}%"
 WINDOW_SIZE_TEXT = "Окно: {mode}"
 BALANCE_TEXT = "{balance} ₽"
+RESULT_CORRECT_TEXT = "Верно: {money_delta} ₽"
+RESULT_MISTAKE_TEXT = "Ошибка: {money_delta} ₽"
 INSTRUCTION_TITLE_TEXT = "Инструкция"
 
 MENU_BUTTON_WIDTH = 520
@@ -612,10 +612,10 @@ TITLE_FONT_SIZE = 64
 BUTTON_FONT_SIZE = 38
 GAME_FONT_SIZE = 40
 INSTRUCTION_FONT_SIZE = 30
+STUDENT_CARD_FONT_SIZE = 28
 
 BACKGROUND_X = 0
 BACKGROUND_Y = 0
-MIN_SCALED_SIZE = 1
 TABLE_X = -25
 TABLE_Y = 400
 TABLE_WIDTH = 1600
@@ -624,8 +624,26 @@ INSTRUCTION_BOOK_X = 985
 INSTRUCTION_BOOK_Y = 700
 INSTRUCTION_BOOK_WIDTH = 320
 INSTRUCTION_BOOK_HEIGHT = 230
+STUDENT_CARD_X = 620
+STUDENT_CARD_Y = 710
+STUDENT_CARD_WIDTH = 260
+STUDENT_CARD_HEIGHT = 150
+STUDENT_CARD_PANEL_WIDTH = 760
+STUDENT_CARD_PANEL_HEIGHT = 520
+STUDENT_CARD_PANEL_Y = 110
+STUDENT_CARD_PANEL_PADDING = 34
+STUDENT_CARD_LINE_GAP = 10
+STAMP_X = 320
+STAMP_Y = 700
+STAMP_SIZE = 86
+DENY_BUTTON_X = 450
+DENY_BUTTON_Y = 743
+DENY_BUTTON_RADIUS = 36
 BALANCE_X = 30
 BALANCE_Y = 30
+RESULT_X = 30
+RESULT_Y = 82
+NEXT_VISITOR_DELAY = 900
 INSTRUCTION_PANEL_WIDTH = 820
 INSTRUCTION_PANEL_HEIGHT = 520
 INSTRUCTION_PANEL_PADDING = 32
@@ -643,6 +661,14 @@ SLIDER_TRACK_COLOR = (70, 70, 70)
 SLIDER_FILL_COLOR = (180, 180, 180)
 SLIDER_KNOB_COLOR = (255, 255, 255)
 BALANCE_TEXT_COLOR = (60, 220, 90)
+RESULT_CORRECT_COLOR = (60, 220, 90)
+RESULT_MISTAKE_COLOR = (230, 70, 70)
 INSTRUCTION_PANEL_COLOR = (28, 28, 28)
 INSTRUCTION_BORDER_COLOR = (120, 120, 120)
 INSTRUCTION_TEXT_COLOR = (235, 235, 235)
+STUDENT_CARD_COLOR = (0, 0, 0)
+STUDENT_CARD_PANEL_COLOR = (245, 245, 240)
+STUDENT_CARD_PANEL_BORDER_COLOR = (20, 20, 20)
+STUDENT_CARD_PANEL_TEXT_COLOR = (20, 20, 20)
+STAMP_COLOR = (120, 35, 180)
+DENY_BUTTON_COLOR = (190, 0, 0)

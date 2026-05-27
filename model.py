@@ -58,6 +58,7 @@ class GameRules:
             config.INSTRUCTION_EDUCATION_LEVEL.format(levels=levels),
             config.INSTRUCTION_INSTITUTE.format(institutes=institutes),
             config.INSTRUCTION_FULL_NAME,
+            config.INSTRUCTION_ALLOW_DENY,
         ]
 
 

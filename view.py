@@ -7,13 +7,14 @@ class Screen:
     def __init__(self):
         self.width = config.DEFAULT_WINDOW_WIDTH
         self.height = config.DEFAULT_WINDOW_HEIGHT
-        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
+        self.screen = pygame.display.set_mode((self.width, self.height))
 
         pygame.display.set_caption(config.GAME_TITLE)
-        self.myfont = pygame.font.Font(None, config.GAME_FONT_SIZE)
-        self.title_font = pygame.font.Font(None, config.TITLE_FONT_SIZE)
-        self.button_font = pygame.font.Font(None, config.BUTTON_FONT_SIZE)
-        self.instruction_font = pygame.font.Font(None, config.INSTRUCTION_FONT_SIZE)
+        self.myfont = self.create_font(config.GAME_FONT_SIZE)
+        self.title_font = self.create_font(config.TITLE_FONT_SIZE)
+        self.button_font = self.create_font(config.BUTTON_FONT_SIZE)
+        self.instruction_font = self.create_font(config.INSTRUCTION_FONT_SIZE)
+        self.student_card_font = self.create_font(config.STUDENT_CARD_FONT_SIZE)
 
         icon = pygame.image.load(config.ICON_PATH)
         pygame.display.set_icon(icon)
@@ -40,6 +41,18 @@ class Screen:
             config.INSTRUCTION_BOOK_WIDTH,
             config.INSTRUCTION_BOOK_HEIGHT,
         )
+        self.student_card_rect = pygame.Rect(
+            config.STUDENT_CARD_X,
+            config.STUDENT_CARD_Y,
+            config.STUDENT_CARD_WIDTH,
+            config.STUDENT_CARD_HEIGHT,
+        )
+        self.stamp_rect = pygame.Rect(
+            config.STAMP_X,
+            config.STAMP_Y,
+            config.STAMP_SIZE,
+            config.STAMP_SIZE,
+        )
 
         self.menu_buttons = {}
         self.settings_buttons = {}
@@ -49,21 +62,22 @@ class Screen:
         self.running = True
         self.clock = pygame.time.Clock()
 
-    def set_window_size(self, width: int, height: int) -> None:
-        self.width = width
-        self.height = height
-        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
-        self.update_game_rect()
-        self.update_buttons()
+    def create_font(self, size: int) -> pygame.font.Font:
+        font = pygame.font.SysFont(config.FONT_NAME, size)
+
+        if font is None:
+            return pygame.font.Font(None, size)
+
+        return font
 
     def set_window_mode(self, mode_type: str, width: int, height: int) -> None:
         if mode_type == config.WINDOW_MODE_FULLSCREEN:
             self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         elif mode_type == config.WINDOW_MODE_BORDERED_FULLSCREEN:
             info = pygame.display.Info()
-            self.screen = pygame.display.set_mode((info.current_w, info.current_h), pygame.RESIZABLE)
+            self.screen = pygame.display.set_mode((info.current_w, info.current_h))
         else:
-            self.screen = pygame.display.set_mode((width, height), pygame.RESIZABLE)
+            self.screen = pygame.display.set_mode((width, height))
 
         self.width = self.screen.get_width()
         self.height = self.screen.get_height()
@@ -71,14 +85,7 @@ class Screen:
         self.update_buttons()
 
     def update_game_rect(self) -> None:
-        scale_x = self.width / self.game_width
-        scale_y = self.height / self.game_height
-        scale = max(scale_x, scale_y)
-        new_width = max(config.MIN_SCALED_SIZE, int(self.game_width * scale))
-        new_height = max(config.MIN_SCALED_SIZE, int(self.game_height * scale))
-
-        self.game_rect = pygame.Rect(0, 0, new_width, new_height)
-        self.game_rect.center = (self.width // 2, self.height // 2)
+        self.game_rect = pygame.Rect(0, 0, self.width, self.height)
 
     def update_buttons(self) -> None:
         self.menu_buttons = {
@@ -166,25 +173,41 @@ class Screen:
     def draw_game(
         self,
         balance: int,
+        person=None,
+        visitor_visible: bool = True,
+        student_card_open: bool = False,
+        result_text: str = "",
+        result_is_correct: bool = True,
         instruction_open: bool = False,
         instruction_lines=None,
     ) -> None:
         self.screen.fill(config.MENU_BACKGROUND_COLOR)
-        self.draw_game_scene()
+        self.draw_game_scene(person, visitor_visible)
 
         scaled_scene = pygame.transform.scale(self.game_scene, self.game_rect.size)
         self.screen.blit(scaled_scene, self.game_rect)
         self.draw_balance(balance)
+        self.draw_result(result_text, result_is_correct)
+
+        if student_card_open and person is not None:
+            self.draw_student_card_panel(person)
 
         if instruction_open:
             self.draw_instruction(instruction_lines)
 
         self.update_screen()
 
-    def draw_game_scene(self) -> None:
+    def draw_game_scene(self, person, visitor_visible: bool) -> None:
         self.game_scene.blit(self.background_image, (config.BACKGROUND_X, config.BACKGROUND_Y))
-        pygame.draw.rect(self.game_scene, config.PERSON_COLOR, self.person_rect)
+
+        if visitor_visible:
+            pygame.draw.rect(self.game_scene, config.PERSON_COLOR, self.person_rect)
+
         self.game_scene.blit(self.table, (config.TABLE_X, config.TABLE_Y))
+        self.draw_table_tools()
+
+        if visitor_visible and person is not None and person.document is not None:
+            pygame.draw.rect(self.game_scene, config.STUDENT_CARD_COLOR, self.student_card_rect)
 
     def draw_menu_background(self) -> None:
         self.screen.fill(config.MENU_BACKGROUND_COLOR)
@@ -195,6 +218,52 @@ class Screen:
         label_rect = label.get_rect(topleft=(config.BALANCE_X, config.BALANCE_Y))
 
         self.screen.blit(label, label_rect)
+
+    def draw_result(self, text: str, is_correct: bool) -> None:
+        if text == "":
+            return
+
+        color = config.RESULT_CORRECT_COLOR
+        if not is_correct:
+            color = config.RESULT_MISTAKE_COLOR
+
+        label = self.myfont.render(text, True, color)
+        label_rect = label.get_rect(topleft=(config.RESULT_X, config.RESULT_Y))
+        self.screen.blit(label, label_rect)
+
+    def draw_table_tools(self) -> None:
+        pygame.draw.rect(self.game_scene, config.STAMP_COLOR, self.stamp_rect)
+        pygame.draw.circle(
+            self.game_scene,
+            config.DENY_BUTTON_COLOR,
+            (config.DENY_BUTTON_X, config.DENY_BUTTON_Y),
+            config.DENY_BUTTON_RADIUS,
+        )
+
+    def draw_student_card_panel(self, person) -> None:
+        panel = pygame.Rect(0, 0, config.STUDENT_CARD_PANEL_WIDTH, config.STUDENT_CARD_PANEL_HEIGHT)
+        panel.centerx = self.width // 2
+        panel.y = config.STUDENT_CARD_PANEL_Y
+
+        pygame.draw.rect(self.screen, config.STUDENT_CARD_PANEL_COLOR, panel)
+        pygame.draw.rect(self.screen, config.STUDENT_CARD_PANEL_BORDER_COLOR, panel, 2)
+
+        x = panel.x + config.STUDENT_CARD_PANEL_PADDING
+        y = panel.y + config.STUDENT_CARD_PANEL_PADDING
+        max_width = panel.width - config.STUDENT_CARD_PANEL_PADDING * 2
+
+        for line in person.document_data():
+            wrapped_lines = self.wrap_text(line, self.student_card_font, max_width)
+            for wrapped_line in wrapped_lines:
+                text = self.student_card_font.render(
+                    wrapped_line,
+                    True,
+                    config.STUDENT_CARD_PANEL_TEXT_COLOR,
+                )
+                self.screen.blit(text, (x, y))
+                y += self.student_card_font.get_height() + config.STUDENT_CARD_LINE_GAP
+
+            y += config.STUDENT_CARD_LINE_GAP
 
     def draw_instruction(self, instruction_lines) -> None:
         if instruction_lines is None:
@@ -312,6 +381,33 @@ class Screen:
             return False
 
         return self.instruction_book_rect.collidepoint(game_pos)
+
+    def is_student_card_clicked(self, mouse_pos) -> bool:
+        game_pos = self.get_game_mouse_pos(mouse_pos)
+
+        if game_pos is None:
+            return False
+
+        return self.student_card_rect.collidepoint(game_pos)
+
+    def is_stamp_clicked(self, mouse_pos) -> bool:
+        game_pos = self.get_game_mouse_pos(mouse_pos)
+
+        if game_pos is None:
+            return False
+
+        return self.stamp_rect.collidepoint(game_pos)
+
+    def is_deny_button_clicked(self, mouse_pos) -> bool:
+        game_pos = self.get_game_mouse_pos(mouse_pos)
+
+        if game_pos is None:
+            return False
+
+        dx = game_pos[0] - config.DENY_BUTTON_X
+        dy = game_pos[1] - config.DENY_BUTTON_Y
+
+        return dx * dx + dy * dy <= config.DENY_BUTTON_RADIUS * config.DENY_BUTTON_RADIUS
 
     def update_screen(self) -> None:
         pygame.display.update()

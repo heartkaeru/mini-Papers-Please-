@@ -4,7 +4,7 @@ import os
 import pygame
 
 import config
-from model import GameModel
+from model import Decision, GameModel
 from view import Screen
 
 
@@ -29,6 +29,11 @@ class GameController:
         self.game_started = False
         self.game_model = None
         self.instruction_open = False
+        self.student_card_open = False
+        self.visitor_visible = False
+        self.result_text = ""
+        self.result_is_correct = True
+        self.next_visitor_time = None
         self.active_slider = None
 
         if not self.music_enabled:
@@ -39,6 +44,7 @@ class GameController:
     def run(self):
         while self.view.running:
             self.handle_events()
+            self.update_game_state()
             self.draw_current_screen()
 
         pygame.quit()
@@ -57,6 +63,11 @@ class GameController:
         elif self.screen_name == config.SCREEN_GAME:
             self.view.draw_game(
                 self.get_balance(),
+                self.get_current_person(),
+                self.visitor_visible,
+                self.student_card_open,
+                self.result_text,
+                self.result_is_correct,
                 self.instruction_open,
                 self.get_instruction_lines(),
             )
@@ -68,9 +79,6 @@ class GameController:
                 self.view.running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 self.handle_escape()
-            elif event.type == pygame.VIDEORESIZE:
-                if self.is_windowed_mode():
-                    self.view.set_window_size(event.w, event.h)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self.handle_mouse_down(event.pos)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -128,6 +136,18 @@ class GameController:
     def handle_game_click(self, mouse_pos):
         if self.view.is_instruction_book_clicked(mouse_pos):
             self.instruction_open = not self.instruction_open
+        elif self.game_model is None:
+            return
+        elif self.game_model.game_over:
+            return
+        elif not self.visitor_visible:
+            return
+        elif self.view.is_stamp_clicked(mouse_pos):
+            self.make_decision(Decision.ALLOW)
+        elif self.view.is_deny_button_clicked(mouse_pos):
+            self.make_decision(Decision.DENY)
+        elif self.has_current_document() and self.view.is_student_card_clicked(mouse_pos):
+            self.student_card_open = True
 
     def handle_mouse_up(self):
         if self.active_slider is not None:
@@ -144,6 +164,10 @@ class GameController:
         self.game_model = GameModel()
         self.game_started = True
         self.instruction_open = False
+        self.student_card_open = False
+        self.visitor_visible = True
+        self.result_text = ""
+        self.next_visitor_time = None
         self.screen_name = config.SCREEN_GAME
 
     def continue_game(self):
@@ -151,13 +175,59 @@ class GameController:
             self.game_model = GameModel()
 
         self.game_started = True
+        self.visitor_visible = True
         self.screen_name = config.SCREEN_GAME
+
+    def update_game_state(self):
+        if self.next_visitor_time is None:
+            return
+
+        if pygame.time.get_ticks() < self.next_visitor_time:
+            return
+
+        self.visitor_visible = True
+        self.student_card_open = False
+        self.result_text = ""
+        self.next_visitor_time = None
+
+    def make_decision(self, decision):
+        result = self.game_model.decide(decision)
+        self.result_text = self.get_result_text(result)
+        self.result_is_correct = result.is_correct
+        self.visitor_visible = False
+        self.student_card_open = False
+
+        if result.game_over:
+            self.result_text = result.game_over_reason
+            self.next_visitor_time = None
+        else:
+            self.next_visitor_time = pygame.time.get_ticks() + config.NEXT_VISITOR_DELAY
+
+    def get_result_text(self, result):
+        if result.is_correct:
+            return config.RESULT_CORRECT_TEXT.format(money_delta=result.money_delta)
+
+        return config.RESULT_MISTAKE_TEXT.format(money_delta=result.money_delta)
 
     def get_balance(self):
         if self.game_model is None:
             return config.DEFAULT_MONEY
 
         return self.game_model.economy.money
+
+    def get_current_person(self):
+        if self.game_model is None:
+            return None
+
+        return self.game_model.current_person
+
+    def has_current_document(self):
+        person = self.get_current_person()
+
+        if person is None:
+            return False
+
+        return person.document is not None
 
     def get_instruction_lines(self):
         if self.game_model is None:
@@ -224,10 +294,6 @@ class GameController:
     def get_window_mode_text(self):
         mode = config.WINDOW_MODES[self.window_mode_number]
         return mode[config.WINDOW_MODE_TEXT_INDEX]
-
-    def is_windowed_mode(self):
-        mode = config.WINDOW_MODES[self.window_mode_number]
-        return mode[config.WINDOW_MODE_TYPE_INDEX] == config.WINDOW_MODE_WINDOWED
 
     def load_settings(self):
         settings = self.get_default_settings()
