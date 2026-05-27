@@ -1,10 +1,17 @@
 import random
 import re
-from datetime import date, timedelta
+from datetime import date
 from enum import Enum
 from typing import List, Optional, Tuple, Union
 
 import config
+
+
+def display_date(value: Optional[date]) -> str:
+    if value is None:
+        return config.NO_DATE_TEXT
+
+    return value.strftime(config.DATE_FORMAT)
 
 
 class Decision(Enum):
@@ -15,17 +22,23 @@ class Decision(Enum):
 class GameRules:
     def __init__(
         self,
-        min_age: int = config.DEFAULT_MIN_AGE,
+        max_valid_birth_year: int = config.MAX_VALID_BIRTH_YEAR,
         group_pattern: str = config.GROUP_PATTERN,
         valid_group_prefixes: Tuple[str, ...] = config.VALID_GROUP_PREFIXES,
+        valid_education_forms: Tuple[str, ...] = config.EDUCATION_FORMS,
+        valid_education_levels: Tuple[str, ...] = config.EDUCATION_LEVELS,
+        valid_institutes: Tuple[str, ...] = config.INSTITUTES,
         reward_for_correct_decision: int = config.DEFAULT_REWARD,
         fine_for_mistake: int = config.DEFAULT_FINE,
         dismissal_balance_limit: int = config.DEFAULT_DISMISSAL_BALANCE,
         current_date: Optional[date] = None,
     ):
-        self.min_age = min_age
+        self.max_valid_birth_year = max_valid_birth_year
         self.group_pattern = group_pattern
         self.valid_group_prefixes = valid_group_prefixes
+        self.valid_education_forms = valid_education_forms
+        self.valid_education_levels = valid_education_levels
+        self.valid_institutes = valid_institutes
         self.reward_for_correct_decision = reward_for_correct_decision
         self.fine_for_mistake = fine_for_mistake
         self.dismissal_balance_limit = dismissal_balance_limit
@@ -33,12 +46,18 @@ class GameRules:
 
     def instruction_lines(self) -> List[str]:
         prefixes = ", ".join(self.valid_group_prefixes)
+        forms = ", ".join(self.valid_education_forms)
+        levels = ", ".join(self.valid_education_levels)
+        institutes = ", ".join(self.valid_institutes)
         return [
             config.INSTRUCTION_HAS_DOCUMENT,
-            config.INSTRUCTION_NOT_EXPIRED,
-            config.INSTRUCTION_MIN_AGE.format(min_age=self.min_age),
+            config.INSTRUCTION_BIRTH_YEAR.format(max_year=self.max_valid_birth_year),
+            config.INSTRUCTION_ISSUE_DATE,
             config.INSTRUCTION_GROUP.format(prefixes=prefixes),
-            config.INSTRUCTION_DATA_MATCH,
+            config.INSTRUCTION_EDUCATION_FORM.format(forms=forms),
+            config.INSTRUCTION_EDUCATION_LEVEL.format(levels=levels),
+            config.INSTRUCTION_INSTITUTE.format(institutes=institutes),
+            config.INSTRUCTION_FULL_NAME,
         ]
 
 
@@ -72,47 +91,49 @@ class Economy:
 class Document:
     def __init__(
         self,
-        name: str = "",
-        age: int = config.DEFAULT_AGE,
+        full_name: str = "",
         group: str = "",
-        valid_until: Optional[date] = None,
+        birth_date: Optional[date] = None,
+        education_form: str = "",
+        education_level: str = "",
+        institute: str = "",
+        issue_date: Optional[date] = None,
     ):
-        self.name = name
-        self.age = age
+        self.full_name = full_name
         self.group = group
-        self.valid_until = valid_until
+        self.birth_date = birth_date
+        self.education_form = education_form
+        self.education_level = education_level
+        self.institute = institute
+        self.issue_date = issue_date
 
-    def is_expired(self, current_date: date) -> bool:
-        if self.valid_until is None:
-            return True
-        return self.valid_until < current_date
+    def display_birth_date(self) -> str:
+        return display_date(self.birth_date)
 
-    def display_valid_until(self) -> str:
-        if self.valid_until is None:
-            return config.NO_DATE_TEXT
-        return self.valid_until.strftime(config.DATE_FORMAT)
+    def display_issue_date(self) -> str:
+        return display_date(self.issue_date)
 
 
 class Person:
     def __init__(
         self,
-        name: str = "",
-        age: int = config.DEFAULT_AGE,
+        full_name: str = "",
         group: str = "",
+        birth_date: Optional[date] = None,
         document: Optional[Document] = None,
         is_important: bool = False,
     ):
-        self.name = name
-        self.age = age
+        self.full_name = full_name
         self.group = group
+        self.birth_date = birth_date
         self.document = document
         self.is_important = is_important
 
     def display_data(self) -> List[str]:
         return [
-            f"{config.PERSON_NAME_TEXT}: {self.name}",
-            f"{config.PERSON_AGE_TEXT}: {self.age}",
+            f"{config.PERSON_FULL_NAME_TEXT}: {self.full_name}",
             f"{config.PERSON_GROUP_TEXT}: {self.group}",
+            f"{config.PERSON_BIRTH_DATE_TEXT}: {display_date(self.birth_date)}",
         ]
 
     def document_data(self) -> List[str]:
@@ -120,10 +141,14 @@ class Person:
             return [config.NO_DOCUMENT_TEXT]
 
         return [
-            f"{config.PERSON_NAME_TEXT}: {self.document.name}",
-            f"{config.PERSON_AGE_TEXT}: {self.document.age}",
+            f"{config.STUDENT_CARD_TEXT}",
+            f"{config.PERSON_FULL_NAME_TEXT}: {self.document.full_name}",
             f"{config.PERSON_GROUP_TEXT}: {self.document.group}",
-            f"{config.DOCUMENT_VALID_UNTIL_TEXT}: {self.document.display_valid_until()}",
+            f"{config.PERSON_BIRTH_DATE_TEXT}: {self.document.display_birth_date()}",
+            f"{config.EDUCATION_FORM_TEXT}: {self.document.education_form}",
+            f"{config.EDUCATION_LEVEL_TEXT}: {self.document.education_level}",
+            f"{config.INSTITUTE_TEXT}: {self.document.institute}",
+            f"{config.ISSUE_DATE_TEXT}: {self.document.display_issue_date()}",
         ]
 
 
@@ -159,16 +184,15 @@ class PersonGenerator:
     def __init__(self, rules: Optional[GameRules] = None, seed: Optional[int] = None):
         self.rules = rules or GameRules()
         self.random = random.Random(seed)
-        self.names = config.PERSON_NAMES
         self.invalid_reasons = [
             config.NO_DOCUMENT,
-            config.EXPIRED_DOCUMENT,
-            config.TOO_YOUNG,
+            config.BAD_BIRTH_DATE,
+            config.BAD_ISSUE_DATE,
             config.BAD_GROUP_FORMAT,
             config.BAD_GROUP_PREFIX_ERROR,
-            config.WRONG_NAME,
-            config.WRONG_AGE,
-            config.WRONG_GROUP,
+            config.BAD_EDUCATION_FORM,
+            config.BAD_EDUCATION_LEVEL,
+            config.BAD_INSTITUTE,
         ]
 
     def generate(self) -> Person:
@@ -181,21 +205,26 @@ class PersonGenerator:
         return person
 
     def _generate_valid_person(self) -> Person:
-        name = self.random.choice(self.names)
-        age = self.random.randint(self.rules.min_age, config.DEFAULT_MAX_AGE)
+        full_name = self._generate_full_name()
         group = self._generate_valid_group()
-        valid_days = self.random.randint(config.MIN_PASS_DAYS, config.MAX_PASS_DAYS)
-        valid_until = self.rules.current_date + timedelta(days=valid_days)
+        birth_date = self._generate_valid_birth_date()
+        education_form = self.random.choice(self.rules.valid_education_forms)
+        education_level = self.random.choice(self.rules.valid_education_levels)
+        institute = self.random.choice(self.rules.valid_institutes)
+        issue_date = self._generate_valid_issue_date(birth_date)
 
         return Person(
-            name=name,
-            age=age,
+            full_name=full_name,
             group=group,
+            birth_date=birth_date,
             document=Document(
-                name=name,
-                age=age,
+                full_name=full_name,
                 group=group,
-                valid_until=valid_until,
+                birth_date=birth_date,
+                education_form=education_form,
+                education_level=education_level,
+                institute=institute,
+                issue_date=issue_date,
             ),
         )
 
@@ -210,32 +239,76 @@ class PersonGenerator:
         if document is None:
             return
 
-        if reason == config.EXPIRED_DOCUMENT:
-            expired_days = self.random.randint(config.MIN_PASS_DAYS, config.MAX_EXPIRED_DAYS)
-            document.valid_until = self.rules.current_date - timedelta(days=expired_days)
-        elif reason == config.TOO_YOUNG:
-            person.age = self.random.randint(config.MIN_TOO_YOUNG_AGE, self.rules.min_age - 1)
-            document.age = person.age
+        if reason == config.BAD_BIRTH_DATE:
+            document.birth_date = self._generate_invalid_birth_date()
+            document.issue_date = self._generate_valid_issue_date(document.birth_date)
+        elif reason == config.BAD_ISSUE_DATE:
+            document.issue_date = self._generate_bad_issue_date(document.birth_date)
         elif reason == config.BAD_GROUP_FORMAT:
             document.group = self.random.choice(config.BAD_GROUP_VARIANTS)
         elif reason == config.BAD_GROUP_PREFIX_ERROR:
             group_number = self.random.randint(config.MIN_GROUP_NUMBER, config.MAX_GROUP_NUMBER)
             document.group = f"{config.BAD_GROUP_PREFIX}{config.GROUP_SEPARATOR}{group_number}"
-        elif reason == config.WRONG_NAME:
-            possible_names = [name for name in self.names if name != person.name]
-            document.name = self.random.choice(possible_names)
-        elif reason == config.WRONG_AGE:
-            document.age = person.age + self.random.choice(config.AGE_MISTAKE_VARIANTS)
-        elif reason == config.WRONG_GROUP:
-            document.group = self._generate_valid_group(exclude=person.group)
+        elif reason == config.BAD_EDUCATION_FORM:
+            document.education_form = self.random.choice(config.BAD_EDUCATION_FORMS)
+        elif reason == config.BAD_EDUCATION_LEVEL:
+            document.education_level = self.random.choice(config.BAD_EDUCATION_LEVELS)
+        elif reason == config.BAD_INSTITUTE:
+            document.institute = self.random.choice(config.BAD_INSTITUTES)
 
-    def _generate_valid_group(self, exclude: Optional[str] = None) -> str:
-        while True:
-            prefix = self.random.choice(self.rules.valid_group_prefixes)
-            group_number = self.random.randint(config.MIN_GROUP_NUMBER, config.MAX_GROUP_NUMBER)
-            group = f"{prefix}{config.GROUP_SEPARATOR}{group_number}"
-            if group != exclude:
-                return group
+    def _generate_full_name(self) -> str:
+        gender = self.random.choice(config.GENDERS)
+
+        if gender == config.GENDER_FEMALE:
+            first_name = self.random.choice(config.FEMALE_NAMES)
+            last_name = self.random.choice(config.FEMALE_LAST_NAMES)
+            patronymic = self.random.choice(config.FEMALE_PATRONYMICS)
+        else:
+            first_name = self.random.choice(config.MALE_NAMES)
+            last_name = self.random.choice(config.MALE_LAST_NAMES)
+            patronymic = self.random.choice(config.MALE_PATRONYMICS)
+
+        return f"{last_name} {first_name} {patronymic}"
+
+    def _generate_valid_birth_date(self) -> date:
+        return self._generate_birth_date(
+            config.MIN_BIRTH_YEAR,
+            self.rules.max_valid_birth_year,
+        )
+
+    def _generate_invalid_birth_date(self) -> date:
+        return self._generate_birth_date(
+            self.rules.max_valid_birth_year + 1,
+            config.MAX_BIRTH_YEAR,
+        )
+
+    def _generate_birth_date(self, min_year: int, max_year: int) -> date:
+        year = self.random.randint(min_year, max_year)
+        month = self.random.randint(config.MIN_MONTH, config.MAX_MONTH)
+        day = self.random.randint(config.MIN_DAY, config.MAX_SAFE_DAY)
+
+        return date(year, month, day)
+
+    def _generate_valid_issue_date(self, birth_date: date) -> date:
+        issue_age = self.random.choice(config.VALID_ISSUE_AGES)
+        issue_year = birth_date.year + issue_age
+
+        return date(issue_year, config.ISSUE_DATE_MONTH, config.ISSUE_DATE_DAY)
+
+    def _generate_bad_issue_date(self, birth_date: Optional[date]) -> date:
+        if birth_date is None:
+            birth_date = self._generate_valid_birth_date()
+
+        issue_age = self.random.choice(config.BAD_ISSUE_AGES)
+        issue_year = birth_date.year + issue_age
+
+        return date(issue_year, config.ISSUE_DATE_MONTH, config.ISSUE_DATE_DAY)
+
+    def _generate_valid_group(self) -> str:
+        prefix = self.random.choice(self.rules.valid_group_prefixes)
+        group_number = self.random.randint(config.MIN_GROUP_NUMBER, config.MAX_GROUP_NUMBER)
+
+        return f"{prefix}{config.GROUP_SEPARATOR}{group_number}"
 
 
 class Checker:
@@ -246,22 +319,23 @@ class Checker:
         if person.document is None:
             errors.append(config.ERROR_NO_DOCUMENT)
 
-    def check_expired(self, person: Person, errors: List[str]) -> None:
-        if person.document is not None:
-            if person.document.is_expired(self.rules.current_date):
-                errors.append(config.ERROR_EXPIRED_DOCUMENT)
+    def check_birth_date(self, person: Person, errors: List[str]) -> None:
+        if person.document is None:
+            return
 
-    def check_age(self, person: Person, errors: List[str]) -> None:
-        if person.age < self.rules.min_age:
-            errors.append(config.ERROR_TOO_YOUNG)
+        birth_date = person.document.birth_date
 
-    def check_name(self, person: Person, errors: List[str]) -> None:
-        if person.document is not None and person.document.name != person.name:
-            errors.append(config.ERROR_WRONG_NAME)
+        if birth_date is None or birth_date.year > self.rules.max_valid_birth_year:
+            errors.append(config.ERROR_BAD_BIRTH_DATE)
 
-    def check_document_age(self, person: Person, errors: List[str]) -> None:
-        if person.document is not None and person.document.age != person.age:
-            errors.append(config.ERROR_WRONG_AGE)
+    def check_issue_date(self, person: Person, errors: List[str]) -> None:
+        if person.document is None:
+            return
+
+        document = person.document
+
+        if not self.is_issue_date_correct(document.birth_date, document.issue_date):
+            errors.append(config.ERROR_BAD_ISSUE_DATE)
 
     def check_group(self, person: Person, errors: List[str]) -> None:
         if person.document is None:
@@ -277,8 +351,45 @@ class Checker:
         if prefix not in self.rules.valid_group_prefixes:
             errors.append(config.ERROR_BAD_GROUP_PREFIX)
 
-        if group != person.group:
-            errors.append(config.ERROR_WRONG_GROUP)
+    def check_education_form(self, person: Person, errors: List[str]) -> None:
+        if person.document is None:
+            return
+
+        if person.document.education_form not in self.rules.valid_education_forms:
+            errors.append(config.ERROR_BAD_EDUCATION_FORM)
+
+    def check_education_level(self, person: Person, errors: List[str]) -> None:
+        if person.document is None:
+            return
+
+        if person.document.education_level not in self.rules.valid_education_levels:
+            errors.append(config.ERROR_BAD_EDUCATION_LEVEL)
+
+    def check_institute(self, person: Person, errors: List[str]) -> None:
+        if person.document is None:
+            return
+
+        if person.document.institute not in self.rules.valid_institutes:
+            errors.append(config.ERROR_BAD_INSTITUTE)
+
+    def is_issue_date_correct(
+        self,
+        birth_date: Optional[date],
+        issue_date: Optional[date],
+    ) -> bool:
+        if birth_date is None or issue_date is None:
+            return False
+
+        if issue_date.day != config.ISSUE_DATE_DAY:
+            return False
+        if issue_date.month != config.ISSUE_DATE_MONTH:
+            return False
+
+        valid_years = []
+        for age in config.VALID_ISSUE_AGES:
+            valid_years.append(birth_date.year + age)
+
+        return issue_date.year in valid_years
 
     def check_all(self, person: Person) -> Tuple[bool, List[str]]:
         errors: List[str] = []
@@ -287,11 +398,12 @@ class Checker:
         if person.document is None:
             return False, errors
 
-        self.check_expired(person, errors)
-        self.check_age(person, errors)
-        self.check_name(person, errors)
-        self.check_document_age(person, errors)
+        self.check_birth_date(person, errors)
+        self.check_issue_date(person, errors)
         self.check_group(person, errors)
+        self.check_education_form(person, errors)
+        self.check_education_level(person, errors)
+        self.check_institute(person, errors)
 
         return len(errors) == 0, errors
 

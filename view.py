@@ -13,6 +13,7 @@ class Screen:
         self.myfont = pygame.font.Font(None, config.GAME_FONT_SIZE)
         self.title_font = pygame.font.Font(None, config.TITLE_FONT_SIZE)
         self.button_font = pygame.font.Font(None, config.BUTTON_FONT_SIZE)
+        self.instruction_font = pygame.font.Font(None, config.INSTRUCTION_FONT_SIZE)
 
         icon = pygame.image.load(config.ICON_PATH)
         pygame.display.set_icon(icon)
@@ -32,6 +33,12 @@ class Screen:
             config.PERSON_RECT_Y,
             config.PERSON_RECT_WIDTH,
             config.PERSON_RECT_HEIGHT,
+        )
+        self.instruction_book_rect = pygame.Rect(
+            config.INSTRUCTION_BOOK_X,
+            config.INSTRUCTION_BOOK_Y,
+            config.INSTRUCTION_BOOK_WIDTH,
+            config.INSTRUCTION_BOOK_HEIGHT,
         )
 
         self.menu_buttons = {}
@@ -156,12 +163,21 @@ class Screen:
 
         self.update_screen()
 
-    def draw_game(self) -> None:
+    def draw_game(
+        self,
+        balance: int,
+        instruction_open: bool = False,
+        instruction_lines=None,
+    ) -> None:
         self.screen.fill(config.MENU_BACKGROUND_COLOR)
         self.draw_game_scene()
 
         scaled_scene = pygame.transform.scale(self.game_scene, self.game_rect.size)
         self.screen.blit(scaled_scene, self.game_rect)
+        self.draw_balance(balance)
+
+        if instruction_open:
+            self.draw_instruction(instruction_lines)
 
         self.update_screen()
 
@@ -172,6 +188,40 @@ class Screen:
 
     def draw_menu_background(self) -> None:
         self.screen.fill(config.MENU_BACKGROUND_COLOR)
+
+    def draw_balance(self, balance: int) -> None:
+        text = config.BALANCE_TEXT.format(balance=balance)
+        label = self.myfont.render(text, True, config.BALANCE_TEXT_COLOR)
+        label_rect = label.get_rect(topleft=(config.BALANCE_X, config.BALANCE_Y))
+
+        self.screen.blit(label, label_rect)
+
+    def draw_instruction(self, instruction_lines) -> None:
+        if instruction_lines is None:
+            instruction_lines = []
+
+        panel = pygame.Rect(0, 0, config.INSTRUCTION_PANEL_WIDTH, config.INSTRUCTION_PANEL_HEIGHT)
+        panel.center = (self.width // 2, self.height // 2)
+
+        pygame.draw.rect(self.screen, config.INSTRUCTION_PANEL_COLOR, panel)
+        pygame.draw.rect(self.screen, config.INSTRUCTION_BORDER_COLOR, panel, 2)
+
+        title = self.button_font.render(config.INSTRUCTION_TITLE_TEXT, True, config.INSTRUCTION_TEXT_COLOR)
+        title_rect = title.get_rect(center=(panel.centerx, panel.y + config.INSTRUCTION_PANEL_PADDING))
+        self.screen.blit(title, title_rect)
+
+        x = panel.x + config.INSTRUCTION_PANEL_PADDING
+        y = panel.y + config.INSTRUCTION_TITLE_GAP
+        max_width = panel.width - config.INSTRUCTION_PANEL_PADDING * 2
+
+        for line in instruction_lines:
+            wrapped_lines = self.wrap_text(line, self.instruction_font, max_width)
+            for wrapped_line in wrapped_lines:
+                text = self.instruction_font.render(wrapped_line, True, config.INSTRUCTION_TEXT_COLOR)
+                self.screen.blit(text, (x, y))
+                y += self.instruction_font.get_height() + config.INSTRUCTION_LINE_GAP
+
+            y += config.INSTRUCTION_LINE_GAP
 
     def draw_title(self, text: str) -> None:
         title = self.title_font.render(text, True, config.MENU_TEXT_COLOR)
@@ -222,6 +272,46 @@ class Screen:
     def get_volume_text(self, template: str, volume: float) -> str:
         volume_percent = int(volume * config.VOLUME_PERCENT)
         return template.format(volume=volume_percent)
+
+    def wrap_text(self, text: str, font: pygame.font.Font, max_width: int) -> list:
+        words = text.split()
+        lines = []
+        current_line = ""
+
+        for word in words:
+            if current_line == "":
+                new_line = word
+            else:
+                new_line = current_line + " " + word
+
+            if font.size(new_line)[0] <= max_width:
+                current_line = new_line
+            else:
+                if current_line != "":
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line != "":
+            lines.append(current_line)
+
+        return lines
+
+    def get_game_mouse_pos(self, mouse_pos):
+        if not self.game_rect.collidepoint(mouse_pos):
+            return None
+
+        game_x = int((mouse_pos[0] - self.game_rect.x) * self.game_width / self.game_rect.width)
+        game_y = int((mouse_pos[1] - self.game_rect.y) * self.game_height / self.game_rect.height)
+
+        return game_x, game_y
+
+    def is_instruction_book_clicked(self, mouse_pos) -> bool:
+        game_pos = self.get_game_mouse_pos(mouse_pos)
+
+        if game_pos is None:
+            return False
+
+        return self.instruction_book_rect.collidepoint(game_pos)
 
     def update_screen(self) -> None:
         pygame.display.update()

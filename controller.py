@@ -4,6 +4,7 @@ import os
 import pygame
 
 import config
+from model import GameModel
 from view import Screen
 
 
@@ -26,6 +27,8 @@ class GameController:
         self.sound_volume = settings[config.SETTING_SOUND_VOLUME]
         self.window_mode_number = settings[config.SETTING_WINDOW_MODE_NUMBER]
         self.game_started = False
+        self.game_model = None
+        self.instruction_open = False
         self.active_slider = None
 
         if not self.music_enabled:
@@ -52,7 +55,11 @@ class GameController:
                 self.get_window_mode_text(),
             )
         elif self.screen_name == config.SCREEN_GAME:
-            self.view.draw_game()
+            self.view.draw_game(
+                self.get_balance(),
+                self.instruction_open,
+                self.get_instruction_lines(),
+            )
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -84,6 +91,8 @@ class GameController:
             self.handle_menu_click(mouse_pos)
         elif self.screen_name == config.SCREEN_SETTINGS:
             self.handle_settings_click(mouse_pos)
+        elif self.screen_name == config.SCREEN_GAME:
+            self.handle_game_click(mouse_pos)
 
     def handle_menu_click(self, mouse_pos):
         buttons = self.view.menu_buttons
@@ -116,6 +125,10 @@ class GameController:
         elif buttons[config.BUTTON_BACK].collidepoint(mouse_pos):
             self.screen_name = config.SCREEN_MENU
 
+    def handle_game_click(self, mouse_pos):
+        if self.view.is_instruction_book_clicked(mouse_pos):
+            self.instruction_open = not self.instruction_open
+
     def handle_mouse_up(self):
         if self.active_slider is not None:
             self.save_settings()
@@ -128,12 +141,29 @@ class GameController:
             self.set_sound_volume_by_mouse(mouse_pos)
 
     def start_game(self):
+        self.game_model = GameModel()
         self.game_started = True
+        self.instruction_open = False
         self.screen_name = config.SCREEN_GAME
 
     def continue_game(self):
+        if self.game_model is None:
+            self.game_model = GameModel()
+
         self.game_started = True
         self.screen_name = config.SCREEN_GAME
+
+    def get_balance(self):
+        if self.game_model is None:
+            return config.DEFAULT_MONEY
+
+        return self.game_model.economy.money
+
+    def get_instruction_lines(self):
+        if self.game_model is None:
+            return []
+
+        return self.game_model.get_instruction()
 
     def has_save(self):
         return os.path.exists(config.SAVE_FILE)
