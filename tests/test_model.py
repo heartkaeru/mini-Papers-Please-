@@ -9,7 +9,7 @@ def make_valid_person() -> Person:
     birth_date = date(2007, 1, 1)
     document = Document(
         full_name="Иванов Иван Иванович",
-        group="ИС-123456",
+        group="ЭК-123456",
         birth_date=birth_date,
         education_form="очная",
         education_level="бакалавриат",
@@ -19,7 +19,7 @@ def make_valid_person() -> Person:
 
     return Person(
         full_name="Иванов Иван Иванович",
-        group="ИС-123456",
+        group="ЭК-123456",
         birth_date=birth_date,
         document=document,
     )
@@ -65,7 +65,7 @@ class CheckerTest(unittest.TestCase):
 
     def test_bad_issue_date_is_denied(self):
         person = make_valid_person()
-        person.document.issue_date = date(2026, 9, 1)
+        person.document.issue_date = date(2027, 10, 1)
 
         result = self.checker.get_result(person)
 

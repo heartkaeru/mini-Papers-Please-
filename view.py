@@ -142,13 +142,11 @@ class Screen:
         sound_enabled: bool,
         music_volume: float,
         sound_volume: float,
-        window_mode_text: str,
     ) -> None:
         music_text = self.get_setting_text(config.MUSIC_SETTING_TEXT, music_enabled)
         sound_text = self.get_setting_text(config.SOUND_SETTING_TEXT, sound_enabled)
         music_volume_text = self.get_volume_text(config.MUSIC_VOLUME_TEXT, music_volume)
         sound_volume_text = self.get_volume_text(config.SOUND_VOLUME_TEXT, sound_volume)
-        size_text = config.WINDOW_SIZE_TEXT.format(mode=window_mode_text)
 
         self.draw_menu_background()
         self.draw_title(config.SETTINGS_TITLE_TEXT)
@@ -165,7 +163,6 @@ class Screen:
             sound_volume_text,
             sound_volume,
         )
-        self.draw_button(self.settings_buttons[config.BUTTON_WINDOW_SIZE], size_text)
         self.draw_button(self.settings_buttons[config.BUTTON_BACK], config.MENU_BACK_TEXT)
 
         self.update_screen()
@@ -173,6 +170,9 @@ class Screen:
     def draw_game(
         self,
         balance: int,
+        day_number: int,
+        date_string: str,
+        time_string: str,
         person=None,
         visitor_visible: bool = True,
         student_card_open: bool = False,
@@ -180,13 +180,16 @@ class Screen:
         result_is_correct: bool = True,
         instruction_open: bool = False,
         instruction_lines=None,
+        visitor_position=None,
+        student_card_on_table: bool = True,
     ) -> None:
         self.screen.fill(config.MENU_BACKGROUND_COLOR)
-        self.draw_game_scene(person, visitor_visible)
+        self.draw_game_scene(person, visitor_visible, visitor_position, student_card_on_table)
 
         scaled_scene = pygame.transform.scale(self.game_scene, self.game_rect.size)
         self.screen.blit(scaled_scene, self.game_rect)
         self.draw_balance(balance)
+        self.draw_day_info(day_number, date_string, time_string)
         self.draw_result(result_text, result_is_correct)
 
         if student_card_open and person is not None:
@@ -197,17 +200,41 @@ class Screen:
 
         self.update_screen()
 
-    def draw_game_scene(self, person, visitor_visible: bool) -> None:
+    def draw_game_scene(
+        self,
+        person,
+        visitor_visible: bool,
+        visitor_position,
+        student_card_on_table: bool,
+    ) -> None:
         self.game_scene.blit(self.background_image, (config.BACKGROUND_X, config.BACKGROUND_Y))
 
         if visitor_visible:
-            pygame.draw.rect(self.game_scene, config.PERSON_COLOR, self.person_rect)
+            color = config.PERSON_COLOR
+            if person is not None and person.is_important:
+                color = config.VIP_PERSON_COLOR
+            pygame.draw.rect(
+                self.game_scene,
+                color,
+                self.get_person_rect(visitor_position),
+            )
 
         self.game_scene.blit(self.table, (config.TABLE_X, config.TABLE_Y))
         self.draw_table_tools()
 
-        if visitor_visible and person is not None and person.document is not None:
+        if student_card_on_table and person is not None and person.document is not None:
             pygame.draw.rect(self.game_scene, config.STUDENT_CARD_COLOR, self.student_card_rect)
+
+    def get_person_rect(self, visitor_position) -> pygame.Rect:
+        if visitor_position is None:
+            return self.person_rect
+
+        return pygame.Rect(
+            int(visitor_position[0]),
+            int(visitor_position[1]),
+            config.PERSON_RECT_WIDTH,
+            config.PERSON_RECT_HEIGHT,
+        )
 
     def draw_menu_background(self) -> None:
         self.screen.fill(config.MENU_BACKGROUND_COLOR)
@@ -218,6 +245,20 @@ class Screen:
         label_rect = label.get_rect(topleft=(config.BALANCE_X, config.BALANCE_Y))
 
         self.screen.blit(label, label_rect)
+
+    def draw_day_info(self, day: int, date_str: str, time_str: str) -> None:
+        day_text = config.DAY_TEXT.format(day=day)
+        date_text = config.DATE_TEXT.format(date=date_str)
+        time_text = config.TIME_TEXT.format(time=time_str)
+
+        label_day = self.myfont.render(day_text, True, (255, 255, 255))
+        self.screen.blit(label_day, (config.DAY_INFO_X, config.DAY_INFO_Y))
+
+        label_date = self.myfont.render(date_text, True, (255, 255, 255))
+        self.screen.blit(label_date, (config.DAY_INFO_X, config.DAY_INFO_Y + config.DAY_INFO_GAP_Y))
+
+        label_time = self.myfont.render(time_text, True, (255, 255, 255))
+        self.screen.blit(label_time, (config.DAY_INFO_X, config.DAY_INFO_Y + config.DAY_INFO_GAP_Y * 2))
 
     def draw_result(self, text: str, is_correct: bool) -> None:
         if text == "":

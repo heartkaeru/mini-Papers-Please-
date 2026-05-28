@@ -1,10 +1,179 @@
 import random
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import List, Optional, Tuple, Union
 
 import config
+
+
+class ShuffleBag:
+    def __init__(self, items, random_source=None):
+        if len(items) == 0:
+            raise ValueError("ShuffleBag не может быть пустым")
+
+        self.items = list(items)
+        self.random = random_source or random.Random()
+        self.bag = []
+
+    def get(self):
+        if len(self.bag) == 0:
+            self.bag = self.items.copy()
+            self.shuffle(self.bag)
+
+        return self.bag.pop()
+
+    def shuffle(self, items):
+        for i in range(len(items) - 1, 0, -1):
+            j = self.random.randint(0, i)
+            items[i], items[j] = items[j], items[i]
+
+
+class PseudoRandomChance:
+    def __init__(self, base_chance, step, max_chance, random_source=None):
+        self.base_chance = base_chance
+        self.step = step
+        self.max_chance = max_chance
+        self.random = random_source or random.Random()
+        self.current_chance = base_chance
+
+    def roll(self):
+        if self.random.random() < self.current_chance:
+            self.current_chance = self.base_chance
+            return True
+
+        self.current_chance += self.step
+        if self.current_chance > self.max_chance:
+            self.current_chance = self.max_chance
+
+        return False
+
+
+class MarkovChain:
+    def __init__(self, transitions, start_state, random_source=None):
+        self.transitions = transitions
+        self.current_state = start_state
+        self.random = random_source or random.Random()
+
+    def next_state(self):
+        variants = self.transitions[self.current_state]
+        self.current_state = weighted_choice(variants, self.random)
+
+        return self.current_state
+
+
+def weighted_choice(variants, random_source):
+    total_weight = 0
+    for item, weight in variants:
+        total_weight += weight
+
+    roll = random_source.uniform(0, total_weight)
+    current_weight = 0
+
+    for item, weight in variants:
+        current_weight += weight
+        if roll <= current_weight:
+            return item
+
+    return variants[-1][0]
+
+
+class GeneticDayPlanner:
+    def __init__(
+        self,
+        min_visitors,
+        max_visitors,
+        min_bad_visitors,
+        max_bad_visitors,
+        population_size,
+        generations,
+        mutation_chance,
+        random_source=None,
+    ):
+        self.min_visitors = min_visitors
+        self.max_visitors = max_visitors
+        self.min_bad_visitors = min_bad_visitors
+        self.max_bad_visitors = max_bad_visitors
+        self.population_size = population_size
+        self.generations = generations
+        self.mutation_chance = mutation_chance
+        self.random = random_source or random.Random()
+
+    def make_plan(self, day_number):
+        visitor_count = self.random.randint(self.min_visitors, self.max_visitors)
+        target_bad = self.get_target_bad_count(day_number, visitor_count)
+        population = []
+
+        for _ in range(self.population_size):
+            population.append(self.make_random_plan(visitor_count))
+
+        for _ in range(self.generations):
+            population.sort(key=lambda plan: self.score_plan(plan, target_bad))
+            survivors = population[: max(2, self.population_size // 4)]
+            new_population = survivors.copy()
+
+            while len(new_population) < self.population_size:
+                parent_a = self.random.choice(survivors)
+                parent_b = self.random.choice(survivors)
+                child = self.cross(parent_a, parent_b)
+                self.mutate(child)
+                new_population.append(child)
+
+            population = new_population
+
+        population.sort(key=lambda plan: self.score_plan(plan, target_bad))
+        return population[0]
+
+    def get_target_bad_count(self, day_number, visitor_count):
+        target = self.min_bad_visitors + day_number - 1
+
+        if target > self.max_bad_visitors:
+            target = self.max_bad_visitors
+        if target > visitor_count:
+            target = visitor_count
+
+        return target
+
+    def make_random_plan(self, visitor_count):
+        plan = []
+
+        for _ in range(visitor_count):
+            plan.append(self.random.choice((True, False)))
+
+        return plan
+
+    def score_plan(self, plan, target_bad):
+        bad_count = 0
+        streak_penalty = 0
+        last_value = None
+        streak = 0
+
+        for value in plan:
+            if value:
+                bad_count += 1
+
+            if value == last_value:
+                streak += 1
+            else:
+                streak = 1
+                last_value = value
+
+            if streak > 2:
+                streak_penalty += streak
+
+        return abs(bad_count - target_bad) * 10 + streak_penalty
+
+    def cross(self, parent_a, parent_b):
+        if len(parent_a) < 2:
+            return parent_a.copy()
+
+        cut = self.random.randint(1, len(parent_a) - 1)
+        return parent_a[:cut] + parent_b[cut:]
+
+    def mutate(self, plan):
+        for i in range(len(plan)):
+            if self.random.random() < self.mutation_chance:
+                plan[i] = not plan[i]
 
 
 def display_date(value: Optional[date]) -> str:
@@ -12,6 +181,40 @@ def display_date(value: Optional[date]) -> str:
         return config.NO_DATE_TEXT
 
     return value.strftime(config.DATE_FORMAT)
+
+
+def get_active_checks(day_number: int) -> Tuple[str, ...]:
+    if day_number in config.CHECKS_BY_DAY:
+        return config.CHECKS_BY_DAY[day_number]
+
+    return config.ALL_CHECKS
+
+
+def get_error_reasons_for_checks(active_checks: Tuple[str, ...]) -> Tuple[str, ...]:
+    reasons = []
+
+    for check_name in active_checks:
+        for reason in config.CHECK_ERROR_REASONS[check_name]:
+            reasons.append(reason)
+
+    return tuple(reasons)
+
+
+def date_to_save(value: Optional[date]) -> Optional[str]:
+    if value is None:
+        return None
+
+    return value.strftime(config.DATE_FORMAT)
+
+
+def date_from_save(value) -> Optional[date]:
+    if not isinstance(value, str):
+        return None
+
+    try:
+        return datetime.strptime(value, config.DATE_FORMAT).date()
+    except ValueError:
+        return None
 
 
 class Decision(Enum):
@@ -25,6 +228,7 @@ class GameRules:
         max_valid_birth_year: int = config.MAX_VALID_BIRTH_YEAR,
         group_pattern: str = config.GROUP_PATTERN,
         valid_group_prefixes: Tuple[str, ...] = config.VALID_GROUP_PREFIXES,
+        institute_group_prefixes: Optional[dict] = None,
         valid_education_forms: Tuple[str, ...] = config.EDUCATION_FORMS,
         valid_education_levels: Tuple[str, ...] = config.EDUCATION_LEVELS,
         valid_institutes: Tuple[str, ...] = config.INSTITUTES,
@@ -36,6 +240,7 @@ class GameRules:
         self.max_valid_birth_year = max_valid_birth_year
         self.group_pattern = group_pattern
         self.valid_group_prefixes = valid_group_prefixes
+        self.institute_group_prefixes = institute_group_prefixes or getattr(config, "INSTITUTE_GROUP_PREFIXES", {})
         self.valid_education_forms = valid_education_forms
         self.valid_education_levels = valid_education_levels
         self.valid_institutes = valid_institutes
@@ -44,22 +249,63 @@ class GameRules:
         self.dismissal_balance_limit = dismissal_balance_limit
         self.current_date = current_date or date.today()
 
-    def instruction_lines(self) -> List[str]:
-        prefixes = ", ".join(self.valid_group_prefixes)
+    def instruction_lines(self, day_number: int = 1, day_order: str = "") -> List[str]:
         forms = ", ".join(self.valid_education_forms)
         levels = ", ".join(self.valid_education_levels)
         institutes = ", ".join(self.valid_institutes)
-        return [
-            config.INSTRUCTION_HAS_DOCUMENT,
-            config.INSTRUCTION_BIRTH_YEAR.format(max_year=self.max_valid_birth_year),
-            config.INSTRUCTION_ISSUE_DATE,
-            config.INSTRUCTION_GROUP.format(prefixes=prefixes),
-            config.INSTRUCTION_EDUCATION_FORM.format(forms=forms),
-            config.INSTRUCTION_EDUCATION_LEVEL.format(levels=levels),
-            config.INSTRUCTION_INSTITUTE.format(institutes=institutes),
-            config.INSTRUCTION_FULL_NAME,
+        bad_institutes = ", ".join(config.BAD_INSTITUTES)
+        group_rules = self.get_group_rules_text()
+        active_checks = get_active_checks(day_number)
+        lines = [
+            config.INSTRUCTION_DAY.format(day=day_number),
+        ]
+
+        if day_order != "":
+            lines.append(config.INSTRUCTION_DAY_ORDER.format(day_order=day_order))
+
+        lines.append(config.INSTRUCTION_SECTION_MAIN)
+
+        if config.CHECK_DOCUMENT in active_checks:
+            lines.append(config.INSTRUCTION_HAS_DOCUMENT)
+        if config.CHECK_BIRTH_DATE in active_checks:
+            lines.append(config.INSTRUCTION_BIRTH_YEAR.format(max_year=self.max_valid_birth_year))
+        if config.CHECK_ISSUE_DATE in active_checks:
+            lines.append(config.INSTRUCTION_ISSUE_DATE)
+        if config.CHECK_GROUP in active_checks:
+            lines.append(config.INSTRUCTION_GROUP)
+        if config.CHECK_EDUCATION_FORM in active_checks:
+            lines.append(config.INSTRUCTION_EDUCATION_FORM.format(forms=forms))
+        if config.CHECK_EDUCATION_LEVEL in active_checks:
+            lines.append(config.INSTRUCTION_EDUCATION_LEVEL.format(levels=levels))
+        if config.CHECK_INSTITUTE in active_checks:
+            lines.append(config.INSTRUCTION_INSTITUTE)
+
+        lines += [
             config.INSTRUCTION_ALLOW_DENY,
         ]
+
+        has_lists = (
+            config.CHECK_GROUP in active_checks
+            or config.CHECK_INSTITUTE in active_checks
+        )
+        if has_lists:
+            lines.append(config.INSTRUCTION_SECTION_LISTS)
+        if config.CHECK_GROUP in active_checks:
+            lines.append(config.INSTRUCTION_GROUP_LIST.format(groups=group_rules))
+        if config.CHECK_INSTITUTE in active_checks:
+            lines.append(config.INSTRUCTION_GOOD_INSTITUTES.format(institutes=institutes))
+            lines.append(config.INSTRUCTION_BAD_INSTITUTES.format(institutes=bad_institutes))
+
+        return lines
+
+    def get_group_rules_text(self) -> str:
+        rules = []
+
+        for institute in self.valid_institutes:
+            prefixes = "/".join(self.institute_group_prefixes[institute])
+            rules.append(f"{institute}={prefixes}")
+
+        return "; ".join(rules)
 
 
 class Economy:
@@ -86,6 +332,7 @@ class Economy:
     def apply_result(self, is_correct: bool) -> int:
         if is_correct:
             return self.add_money()
+
         return self.fine()
 
 
@@ -99,6 +346,7 @@ class Document:
         education_level: str = "",
         institute: str = "",
         issue_date: Optional[date] = None,
+        document_type: str = config.DOCUMENT_TYPE_STUDENT,
     ):
         self.full_name = full_name
         self.group = group
@@ -107,12 +355,41 @@ class Document:
         self.education_level = education_level
         self.institute = institute
         self.issue_date = issue_date
+        self.document_type = document_type
 
     def display_birth_date(self) -> str:
         return display_date(self.birth_date)
 
     def display_issue_date(self) -> str:
         return display_date(self.issue_date)
+
+    def to_save_data(self) -> dict:
+        return {
+            config.SAVE_FULL_NAME: self.full_name,
+            config.SAVE_GROUP: self.group,
+            config.SAVE_BIRTH_DATE: date_to_save(self.birth_date),
+            config.SAVE_EDUCATION_FORM: self.education_form,
+            config.SAVE_EDUCATION_LEVEL: self.education_level,
+            config.SAVE_INSTITUTE: self.institute,
+            config.SAVE_ISSUE_DATE: date_to_save(self.issue_date),
+            config.SAVE_DOCUMENT_TYPE: self.document_type,
+        }
+
+    @staticmethod
+    def from_save_data(data) -> Optional["Document"]:
+        if not isinstance(data, dict):
+            return None
+
+        return Document(
+            full_name=str(data.get(config.SAVE_FULL_NAME, "")),
+            group=str(data.get(config.SAVE_GROUP, "")),
+            birth_date=date_from_save(data.get(config.SAVE_BIRTH_DATE)),
+            education_form=str(data.get(config.SAVE_EDUCATION_FORM, "")),
+            education_level=str(data.get(config.SAVE_EDUCATION_LEVEL, "")),
+            institute=str(data.get(config.SAVE_INSTITUTE, "")),
+            issue_date=date_from_save(data.get(config.SAVE_ISSUE_DATE)),
+            document_type=str(data.get(config.SAVE_DOCUMENT_TYPE, config.DOCUMENT_TYPE_STUDENT)),
+        )
 
 
 class Person:
@@ -142,7 +419,7 @@ class Person:
             return [config.NO_DOCUMENT_TEXT]
 
         return [
-            f"{config.STUDENT_CARD_TEXT}",
+            self.document.document_type,
             f"{config.PERSON_FULL_NAME_TEXT}: {self.document.full_name}",
             f"{config.PERSON_GROUP_TEXT}: {self.document.group}",
             f"{config.PERSON_BIRTH_DATE_TEXT}: {self.document.display_birth_date()}",
@@ -151,6 +428,33 @@ class Person:
             f"{config.INSTITUTE_TEXT}: {self.document.institute}",
             f"{config.ISSUE_DATE_TEXT}: {self.document.display_issue_date()}",
         ]
+
+    def to_save_data(self) -> dict:
+        document_data = None
+
+        if self.document is not None:
+            document_data = self.document.to_save_data()
+
+        return {
+            config.SAVE_FULL_NAME: self.full_name,
+            config.SAVE_GROUP: self.group,
+            config.SAVE_BIRTH_DATE: date_to_save(self.birth_date),
+            config.SAVE_DOCUMENT: document_data,
+            config.SAVE_IS_IMPORTANT: self.is_important,
+        }
+
+    @staticmethod
+    def from_save_data(data) -> Optional["Person"]:
+        if not isinstance(data, dict):
+            return None
+
+        return Person(
+            full_name=str(data.get(config.SAVE_FULL_NAME, "")),
+            group=str(data.get(config.SAVE_GROUP, "")),
+            birth_date=date_from_save(data.get(config.SAVE_BIRTH_DATE)),
+            document=Document.from_save_data(data.get(config.SAVE_DOCUMENT)),
+            is_important=bool(data.get(config.SAVE_IS_IMPORTANT, False)),
+        )
 
 
 class CheckResult:
@@ -185,34 +489,41 @@ class PersonGenerator:
     def __init__(self, rules: Optional[GameRules] = None, seed: Optional[int] = None):
         self.rules = rules or GameRules()
         self.random = random.Random(seed)
-        self.invalid_reasons = [
-            config.NO_DOCUMENT,
-            config.BAD_BIRTH_DATE,
-            config.BAD_ISSUE_DATE,
-            config.BAD_GROUP_FORMAT,
-            config.BAD_GROUP_PREFIX_ERROR,
-            config.BAD_EDUCATION_FORM,
-            config.BAD_EDUCATION_LEVEL,
-            config.BAD_INSTITUTE,
-        ]
+        self.error_bag = ShuffleBag(config.INVALID_REASONS, self.random)
+        self.invalid_chance = PseudoRandomChance(
+            getattr(config, "PRD_BASE_CHANCE", 0.15),
+            getattr(config, "PRD_STEP", 0.05),
+            getattr(config, "PRD_MAX_CHANCE", 0.85),
+            self.random,
+        )
 
-    def generate(self) -> Person:
+    def generate(
+        self,
+        force_invalid: Optional[bool] = None,
+        error_reason: Optional[str] = None,
+    ) -> Person:
         person = self._generate_valid_person()
+        should_be_invalid = force_invalid
 
-        should_be_invalid = self.random.random() < config.INVALID_PERSON_CHANCE
+        if should_be_invalid is None:
+            should_be_invalid = self.invalid_chance.roll()
+
         if should_be_invalid:
-            self._apply_random_error(person)
+            self._apply_random_error(person, error_reason)
 
         return person
 
     def _generate_valid_person(self) -> Person:
         full_name = self._generate_full_name()
-        group = self._generate_valid_group()
         birth_date = self._generate_valid_birth_date()
         education_form = self.random.choice(self.rules.valid_education_forms)
         education_level = self.random.choice(self.rules.valid_education_levels)
         institute = self.random.choice(self.rules.valid_institutes)
+        group = self._generate_valid_group(institute)
         issue_date = self._generate_valid_issue_date(birth_date)
+        
+        is_important = self.random.random() < 0.15
+        document_type = config.DOCUMENT_TYPE_VIP if is_important else config.DOCUMENT_TYPE_STUDENT
 
         return Person(
             full_name=full_name,
@@ -226,11 +537,14 @@ class PersonGenerator:
                 education_level=education_level,
                 institute=institute,
                 issue_date=issue_date,
+                document_type=document_type,
             ),
+            is_important=is_important,
         )
 
-    def _apply_random_error(self, person: Person) -> None:
-        reason = self.random.choice(self.invalid_reasons)
+    def _apply_random_error(self, person: Person, reason: Optional[str] = None) -> None:
+        if reason is None:
+            reason = self.error_bag.get()
 
         if reason == config.NO_DOCUMENT:
             person.document = None
@@ -242,20 +556,24 @@ class PersonGenerator:
 
         if reason == config.BAD_BIRTH_DATE:
             document.birth_date = self._generate_invalid_birth_date()
-            document.issue_date = self._generate_valid_issue_date(document.birth_date)
         elif reason == config.BAD_ISSUE_DATE:
             document.issue_date = self._generate_bad_issue_date(document.birth_date)
         elif reason == config.BAD_GROUP_FORMAT:
             document.group = self.random.choice(config.BAD_GROUP_VARIANTS)
         elif reason == config.BAD_GROUP_PREFIX_ERROR:
             group_number = self.random.randint(config.MIN_GROUP_NUMBER, config.MAX_GROUP_NUMBER)
-            document.group = f"{config.BAD_GROUP_PREFIX}{config.GROUP_SEPARATOR}{group_number}"
+            prefix = self._generate_wrong_group_prefix(document.institute)
+            document.group = f"{prefix}{config.GROUP_SEPARATOR}{group_number}"
         elif reason == config.BAD_EDUCATION_FORM:
             document.education_form = self.random.choice(config.BAD_EDUCATION_FORMS)
         elif reason == config.BAD_EDUCATION_LEVEL:
             document.education_level = self.random.choice(config.BAD_EDUCATION_LEVELS)
         elif reason == config.BAD_INSTITUTE:
             document.institute = self.random.choice(config.BAD_INSTITUTES)
+        elif reason == config.BAD_NOT_UNIQUE_PASS:
+            document.document_type = config.DOCUMENT_TYPE_STUDENT
+        elif reason == config.BAD_IMPOSTER:
+            document.document_type = config.DOCUMENT_TYPE_VIP
 
     def _generate_full_name(self) -> str:
         gender = self.random.choice(config.GENDERS)
@@ -272,10 +590,7 @@ class PersonGenerator:
         return f"{last_name} {first_name} {patronymic}"
 
     def _generate_valid_birth_date(self) -> date:
-        return self._generate_birth_date(
-            config.MIN_BIRTH_YEAR,
-            self.rules.max_valid_birth_year,
-        )
+        return self._generate_birth_date(config.MIN_BIRTH_YEAR, self.rules.max_valid_birth_year)
 
     def _generate_invalid_birth_date(self) -> date:
         return self._generate_birth_date(
@@ -299,17 +614,33 @@ class PersonGenerator:
     def _generate_bad_issue_date(self, birth_date: Optional[date]) -> date:
         if birth_date is None:
             birth_date = self._generate_valid_birth_date()
-
-        issue_age = self.random.choice(config.BAD_ISSUE_AGES)
+            
+        day, month = self.random.choice(getattr(config, "BAD_ISSUE_DATE_VARIANTS", [(1, 9), (2, 9)]))
+        
+        issue_age = self.random.choice(getattr(config, "BAD_ISSUE_AGES", [15, 16, 19, 20]))
         issue_year = birth_date.year + issue_age
 
-        return date(issue_year, config.ISSUE_DATE_MONTH, config.ISSUE_DATE_DAY)
+        return date(issue_year, month, day)
 
-    def _generate_valid_group(self) -> str:
-        prefix = self.random.choice(self.rules.valid_group_prefixes)
+    def _generate_valid_group(self, institute: str) -> str:
+        prefixes = self.rules.institute_group_prefixes[institute]
+        prefix = self.random.choice(prefixes)
         group_number = self.random.randint(config.MIN_GROUP_NUMBER, config.MAX_GROUP_NUMBER)
 
         return f"{prefix}{config.GROUP_SEPARATOR}{group_number}"
+
+    def _generate_wrong_group_prefix(self, institute: str) -> str:
+        valid_prefixes = self.rules.institute_group_prefixes.get(institute, ())
+        bad_prefixes = []
+
+        for prefix in self.rules.valid_group_prefixes:
+            if prefix not in valid_prefixes:
+                bad_prefixes.append(prefix)
+
+        if len(bad_prefixes) == 0:
+            return config.BAD_GROUP_PREFIX
+
+        return self.random.choice(bad_prefixes)
 
 
 class Checker:
@@ -335,7 +666,7 @@ class Checker:
 
         document = person.document
 
-        if not self.is_issue_date_correct(document.birth_date, document.issue_date):
+        if not self.is_issue_date_correct(document.issue_date):
             errors.append(config.ERROR_BAD_ISSUE_DATE)
 
     def check_group(self, person: Person, errors: List[str]) -> None:
@@ -349,7 +680,12 @@ class Checker:
             return
 
         prefix = group.split(config.GROUP_SEPARATOR, config.GROUP_SPLIT_MAX_COUNT)[0]
-        if prefix not in self.rules.valid_group_prefixes:
+        institute = person.document.institute
+
+        if institute not in self.rules.institute_group_prefixes:
+            return
+
+        if prefix not in self.rules.institute_group_prefixes[institute]:
             errors.append(config.ERROR_BAD_GROUP_PREFIX)
 
     def check_education_form(self, person: Person, errors: List[str]) -> None:
@@ -372,13 +708,21 @@ class Checker:
 
         if person.document.institute not in self.rules.valid_institutes:
             errors.append(config.ERROR_BAD_INSTITUTE)
+            
+    def check_vip(self, person: Person, errors: List[str]) -> None:
+        if person.document is None:
+            return
+            
+        if person.is_important and person.document.document_type != config.DOCUMENT_TYPE_VIP:
+            errors.append(config.ERROR_NOT_UNIQUE_PASS)
+        elif not person.is_important and person.document.document_type == config.DOCUMENT_TYPE_VIP:
+            errors.append(config.ERROR_IMPOSTER)
 
     def is_issue_date_correct(
         self,
-        birth_date: Optional[date],
         issue_date: Optional[date],
     ) -> bool:
-        if birth_date is None or issue_date is None:
+        if issue_date is None:
             return False
 
         if issue_date.day != config.ISSUE_DATE_DAY:
@@ -386,30 +730,46 @@ class Checker:
         if issue_date.month != config.ISSUE_DATE_MONTH:
             return False
 
-        valid_years = []
-        for age in config.VALID_ISSUE_AGES:
-            valid_years.append(birth_date.year + age)
+        return True
 
-        return issue_date.year in valid_years
+    def check_all(
+        self,
+        person: Person,
+        active_checks: Optional[Tuple[str, ...]] = None,
+    ) -> Tuple[bool, List[str]]:
+        if active_checks is None:
+            active_checks = config.ALL_CHECKS
 
-    def check_all(self, person: Person) -> Tuple[bool, List[str]]:
         errors: List[str] = []
 
-        self.check_exists(person, errors)
+        if config.CHECK_DOCUMENT in active_checks:
+            self.check_exists(person, errors)
         if person.document is None:
             return False, errors
 
-        self.check_birth_date(person, errors)
-        self.check_issue_date(person, errors)
-        self.check_group(person, errors)
-        self.check_education_form(person, errors)
-        self.check_education_level(person, errors)
-        self.check_institute(person, errors)
+        if config.CHECK_BIRTH_DATE in active_checks:
+            self.check_birth_date(person, errors)
+        if config.CHECK_ISSUE_DATE in active_checks:
+            self.check_issue_date(person, errors)
+        if config.CHECK_GROUP in active_checks:
+            self.check_group(person, errors)
+        if config.CHECK_EDUCATION_FORM in active_checks:
+            self.check_education_form(person, errors)
+        if config.CHECK_EDUCATION_LEVEL in active_checks:
+            self.check_education_level(person, errors)
+        if config.CHECK_INSTITUTE in active_checks:
+            self.check_institute(person, errors)
+        if config.CHECK_VIP in active_checks:
+            self.check_vip(person, errors)
 
         return len(errors) == 0, errors
 
-    def get_result(self, person: Person) -> CheckResult:
-        allow, errors = self.check_all(person)
+    def get_result(
+        self,
+        person: Person,
+        active_checks: Optional[Tuple[str, ...]] = None,
+    ) -> CheckResult:
+        allow, errors = self.check_all(person, active_checks)
         return CheckResult(allow=allow, errors=tuple(errors))
 
 
@@ -420,29 +780,100 @@ class GameModel:
         generator: Optional[PersonGenerator] = None,
         checker: Optional[Checker] = None,
         economy: Optional[Economy] = None,
+        seed: Optional[int] = None,
+        day_planner: Optional[GeneticDayPlanner] = None,
+        day_order_chain: Optional[MarkovChain] = None,
     ):
         self.rules = rules or GameRules()
-        self.generator = generator or PersonGenerator(self.rules)
+        self.random = random.Random(seed)
+        self.generator = generator or PersonGenerator(self.rules, seed)
         self.checker = checker or Checker(self.rules)
         self.economy = economy or Economy(
             reward=self.rules.reward_for_correct_decision,
             fine_amount=self.rules.fine_for_mistake,
         )
+        self.day_planner = day_planner or GeneticDayPlanner(
+            config.DAY_MIN_VISITORS,
+            config.DAY_MAX_VISITORS,
+            config.DAY_MIN_BAD_VISITORS,
+            config.DAY_MAX_BAD_VISITORS,
+            config.DAY_PLAN_POPULATION_SIZE,
+            config.DAY_PLAN_GENERATIONS,
+            config.DAY_PLAN_MUTATION_CHANCE,
+            self.random,
+        )
+        self.day_order_chain = day_order_chain or MarkovChain(
+            config.DAY_ORDER_TRANSITIONS,
+            config.DAY_ORDER_START,
+            self.random,
+        )
         self.round_number = 0
+        self.day_number = 0
+        self.day_order = config.DAY_ORDER_START
+        self.day_plan = []
+        self.day_plan_index = 0
         self.current_person: Optional[Person] = None
         self.last_result: Optional[RoundResult] = None
         self.game_over = False
         self.game_over_reason = ""
 
+        self.start_new_day()
         self.next_round()
+
+    def start_new_day(self) -> None:
+        self.day_number += 1
+
+        if self.day_number == 1:
+            self.day_order = config.DAY_ORDER_START
+        else:
+            self.day_order = self.day_order_chain.next_state()
+
+        self.day_plan = self.day_planner.make_plan(self.day_number)
+        self.day_plan_index = 0
 
     def next_round(self) -> Optional[Person]:
         if self.game_over:
             return None
 
+        if self.day_plan_index >= len(self.day_plan):
+            self.start_new_day()
+
+        should_be_invalid = self.day_plan[self.day_plan_index]
+        active_checks = self.get_active_checks()
+        error_reason = self.choose_error_reason(should_be_invalid, active_checks)
+        self.day_plan_index += 1
         self.round_number += 1
-        self.current_person = self.generator.generate()
+        self.current_person = self.generate_person(should_be_invalid, error_reason)
+
         return self.current_person
+
+    def choose_error_reason(
+        self,
+        should_be_invalid: bool,
+        active_checks: Tuple[str, ...],
+    ) -> Optional[str]:
+        if not should_be_invalid:
+            return None
+
+        active_reasons = get_error_reasons_for_checks(active_checks)
+        focused_error = getattr(config, "DAY_ORDER_ERRORS", {}).get(self.day_order)
+        if (
+            focused_error in active_reasons
+            and self.random.random() < config.DAY_ORDER_FOCUS_CHANCE
+        ):
+            return focused_error
+
+        return self.random.choice(active_reasons)
+
+    def generate_person(
+        self,
+        should_be_invalid: bool,
+        error_reason: Optional[str],
+    ) -> Person:
+        if isinstance(self.generator, PersonGenerator):
+            return self.generator.generate(should_be_invalid, error_reason)
+
+        return self.generator.generate()
 
     def decide(self, decision: Union[Decision, str, bool]) -> RoundResult:
         if self.current_person is None:
@@ -451,7 +882,7 @@ class GameModel:
             raise RuntimeError(config.MESSAGE_GAME_ALREADY_OVER)
 
         player_decision = self._normalize_decision(decision)
-        check_result = self.checker.get_result(self.current_person)
+        check_result = self.checker.get_result(self.current_person, self.get_active_checks())
         correct_decision = Decision.ALLOW if check_result.allow else Decision.DENY
         is_correct = player_decision == correct_decision
         money_delta = self.economy.apply_result(is_correct)
@@ -478,15 +909,83 @@ class GameModel:
         return result
 
     def get_instruction(self) -> List[str]:
-        return self.rules.instruction_lines()
+        return self.rules.instruction_lines(self.day_number, self.day_order)
+
+    def get_active_checks(self) -> Tuple[str, ...]:
+        return get_active_checks(self.day_number)
+        
+    def get_time_info(self) -> Tuple[int, str, str]:
+        current_date = date(2024, 9, 1) + timedelta(days=self.day_number - 1)
+        date_str = current_date.strftime(config.DATE_FORMAT)
+        
+        time_minutes = 8 * 60 + (self.day_plan_index - 1) * 35
+        if time_minutes < 8 * 60:
+            time_minutes = 8 * 60
+            
+        hours = time_minutes // 60
+        minutes = time_minutes % 60
+        time_str = f"{hours:02d}:{minutes:02d}"
+        
+        return self.day_number, date_str, time_str
 
     def to_save_data(self) -> dict:
+        current_person_data = None
+
+        if self.current_person is not None:
+            current_person_data = self.current_person.to_save_data()
+
         return {
-            "money": self.economy.money,
-            "round_number": self.round_number,
-            "game_over": self.game_over,
-            "game_over_reason": self.game_over_reason,
+            config.SAVE_MONEY: self.economy.money,
+            config.SAVE_ROUND_NUMBER: self.round_number,
+            config.SAVE_DAY_NUMBER: self.day_number,
+            config.SAVE_DAY_ORDER: self.day_order,
+            config.SAVE_DAY_PLAN: self.day_plan,
+            config.SAVE_DAY_PLAN_INDEX: self.day_plan_index,
+            config.SAVE_CURRENT_PERSON: current_person_data,
+            config.SAVE_GAME_OVER: self.game_over,
+            config.SAVE_GAME_OVER_REASON: self.game_over_reason,
         }
+
+    @staticmethod
+    def from_save_data(data) -> "GameModel":
+        game = GameModel()
+
+        if not isinstance(data, dict):
+            return game
+
+        game.economy.money = int(data.get(config.SAVE_MONEY, config.DEFAULT_MONEY))
+        game.round_number = int(data.get(config.SAVE_ROUND_NUMBER, 0))
+        game.day_number = int(data.get(config.SAVE_DAY_NUMBER, 1))
+        game.day_order = str(data.get(config.SAVE_DAY_ORDER, config.DAY_ORDER_START))
+        game.day_plan = GameModel.fix_day_plan(data.get(config.SAVE_DAY_PLAN))
+        game.day_plan_index = int(data.get(config.SAVE_DAY_PLAN_INDEX, 0))
+        game.current_person = Person.from_save_data(data.get(config.SAVE_CURRENT_PERSON))
+        game.game_over = bool(data.get(config.SAVE_GAME_OVER, False))
+        game.game_over_reason = str(data.get(config.SAVE_GAME_OVER_REASON, ""))
+
+        if game.day_order in config.DAY_ORDER_TRANSITIONS:
+            game.day_order_chain.current_state = game.day_order
+
+        if len(game.day_plan) == 0:
+            game.day_plan = game.day_planner.make_plan(game.day_number)
+            game.day_plan_index = 0
+
+        if game.current_person is None and not game.game_over:
+            game.next_round()
+
+        return game
+
+    @staticmethod
+    def fix_day_plan(value) -> List[bool]:
+        if not isinstance(value, list):
+            return []
+
+        plan = []
+
+        for item in value:
+            plan.append(bool(item))
+
+        return plan
 
     @staticmethod
     def _normalize_decision(decision: Union[Decision, str, bool]) -> Decision:

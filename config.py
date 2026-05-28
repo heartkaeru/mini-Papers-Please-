@@ -477,11 +477,71 @@ BAD_GROUP_PREFIX_ERROR = "bad_group_prefix"
 BAD_EDUCATION_FORM = "bad_education_form"
 BAD_EDUCATION_LEVEL = "bad_education_level"
 BAD_INSTITUTE = "bad_institute"
+BAD_NOT_UNIQUE_PASS = "bad_not_unique_pass"
+BAD_IMPOSTER = "bad_imposter"
+
+CHECK_DOCUMENT = "document"
+CHECK_BIRTH_DATE = "birth_date"
+CHECK_ISSUE_DATE = "issue_date"
+CHECK_GROUP = "group"
+CHECK_EDUCATION_FORM = "education_form"
+CHECK_EDUCATION_LEVEL = "education_level"
+CHECK_INSTITUTE = "institute"
+CHECK_VIP = "vip"
+ALL_CHECKS = (
+    CHECK_DOCUMENT,
+    CHECK_BIRTH_DATE,
+    CHECK_ISSUE_DATE,
+    CHECK_GROUP,
+    CHECK_EDUCATION_FORM,
+    CHECK_EDUCATION_LEVEL,
+    CHECK_INSTITUTE,
+    CHECK_VIP,
+)
+CHECKS_BY_DAY = {
+    1: (CHECK_DOCUMENT, CHECK_BIRTH_DATE),
+    2: (CHECK_DOCUMENT, CHECK_BIRTH_DATE, CHECK_ISSUE_DATE, CHECK_VIP),
+    3: (CHECK_DOCUMENT, CHECK_BIRTH_DATE, CHECK_ISSUE_DATE, CHECK_GROUP, CHECK_VIP),
+    4: (
+        CHECK_DOCUMENT,
+        CHECK_BIRTH_DATE,
+        CHECK_ISSUE_DATE,
+        CHECK_GROUP,
+        CHECK_EDUCATION_FORM,
+        CHECK_EDUCATION_LEVEL,
+        CHECK_VIP,
+    ),
+    5: ALL_CHECKS,
+}
+CHECK_ERROR_REASONS = {
+    CHECK_DOCUMENT: (NO_DOCUMENT,),
+    CHECK_BIRTH_DATE: (BAD_BIRTH_DATE,),
+    CHECK_ISSUE_DATE: (BAD_ISSUE_DATE,),
+    CHECK_GROUP: (BAD_GROUP_FORMAT, BAD_GROUP_PREFIX_ERROR),
+    CHECK_EDUCATION_FORM: (BAD_EDUCATION_FORM,),
+    CHECK_EDUCATION_LEVEL: (BAD_EDUCATION_LEVEL,),
+    CHECK_INSTITUTE: (BAD_INSTITUTE,),
+    CHECK_VIP: (BAD_NOT_UNIQUE_PASS, BAD_IMPOSTER),
+}
+INVALID_REASONS = (
+    NO_DOCUMENT,
+    BAD_BIRTH_DATE,
+    BAD_ISSUE_DATE,
+    BAD_GROUP_FORMAT,
+    BAD_GROUP_PREFIX_ERROR,
+    BAD_EDUCATION_FORM,
+    BAD_EDUCATION_LEVEL,
+    BAD_INSTITUTE,
+    BAD_NOT_UNIQUE_PASS,
+    BAD_IMPOSTER,
+)
 
 DATE_FORMAT = "%d.%m.%Y"
 NO_DATE_TEXT = "нет данных"
 
 STUDENT_CARD_TEXT = "Студенческий билет"
+DOCUMENT_TYPE_STUDENT = "Студенческий билет"
+DOCUMENT_TYPE_VIP = "Спецпропуск"
 PERSON_FULL_NAME_TEXT = "ФИО"
 PERSON_GROUP_TEXT = "Группа"
 PERSON_BIRTH_DATE_TEXT = "Дата рождения"
@@ -509,6 +569,8 @@ ERROR_BAD_GROUP_PREFIX = "Неизвестное направление груп
 ERROR_BAD_EDUCATION_FORM = "Неверная форма обучения"
 ERROR_BAD_EDUCATION_LEVEL = "Неверный уровень обучения"
 ERROR_BAD_INSTITUTE = "Неизвестный институт"
+ERROR_NOT_UNIQUE_PASS = "Требуется спецпропуск"
+ERROR_IMPOSTER = "Чужой спецпропуск"
 
 MESSAGE_NO_CURRENT_PERSON = "Нельзя принять решение: нет текущего посетителя"
 MESSAGE_GAME_ALREADY_OVER = "Игра окончена"
@@ -520,6 +582,7 @@ PERSON_RECT_Y = 205
 PERSON_RECT_WIDTH = 260
 PERSON_RECT_HEIGHT = 520
 PERSON_COLOR = (0, 0, 0)
+VIP_PERSON_COLOR = (218, 165, 32)
 
 GAME_TITLE = "RADIK, PLEASE!"
 ICON_PATH = "assets/images/icon.png"
@@ -568,6 +631,25 @@ SLIDER_SOUND_VOLUME = "sound_volume"
 SAVE_FILE = "save.json"
 SETTINGS_FILE = "settings.json"
 SETTINGS_ENCODING = "utf-8"
+SAVE_MONEY = "money"
+SAVE_ROUND_NUMBER = "round_number"
+SAVE_DAY_NUMBER = "day_number"
+SAVE_DAY_ORDER = "day_order"
+SAVE_DAY_PLAN = "day_plan"
+SAVE_DAY_PLAN_INDEX = "day_plan_index"
+SAVE_CURRENT_PERSON = "current_person"
+SAVE_GAME_OVER = "game_over"
+SAVE_GAME_OVER_REASON = "game_over_reason"
+SAVE_FULL_NAME = "full_name"
+SAVE_GROUP = "group"
+SAVE_BIRTH_DATE = "birth_date"
+SAVE_DOCUMENT = "document"
+SAVE_IS_IMPORTANT = "is_important"
+SAVE_EDUCATION_FORM = "education_form"
+SAVE_EDUCATION_LEVEL = "education_level"
+SAVE_INSTITUTE = "institute"
+SAVE_ISSUE_DATE = "issue_date"
+SAVE_DOCUMENT_TYPE = "document_type"
 SETTING_MUSIC_ENABLED = "music_enabled"
 SETTING_SOUND_ENABLED = "sound_enabled"
 SETTING_MUSIC_VOLUME = "music_volume"
@@ -590,6 +672,9 @@ MUSIC_VOLUME_TEXT = "Громкость музыки: {volume}%"
 SOUND_VOLUME_TEXT = "Громкость звука: {volume}%"
 WINDOW_SIZE_TEXT = "Окно: {mode}"
 BALANCE_TEXT = "{balance} ₽"
+DAY_TEXT = "День {day}"
+DATE_TEXT = "{date}"
+TIME_TEXT = "{time}"
 RESULT_CORRECT_TEXT = "Верно: {money_delta} ₽"
 RESULT_MISTAKE_TEXT = "Ошибка: {money_delta} ₽"
 INSTRUCTION_TITLE_TEXT = "Инструкция"
@@ -641,8 +726,41 @@ DENY_BUTTON_Y = 743
 DENY_BUTTON_RADIUS = 36
 BALANCE_X = 30
 BALANCE_Y = 30
+DAY_INFO_X = 30
+DAY_INFO_Y = 82
+DAY_INFO_GAP_Y = 40
 RESULT_X = 30
-RESULT_Y = 82
+RESULT_Y = 215
+
+DAY_MIN_VISITORS = 3
+DAY_MAX_VISITORS = 6
+DAY_MIN_BAD_VISITORS = 1
+DAY_MAX_BAD_VISITORS = 3
+DAY_PLAN_POPULATION_SIZE = 50
+DAY_PLAN_GENERATIONS = 100
+DAY_PLAN_MUTATION_CHANCE = 0.1
+
+DAY_ORDER_START = "start"
+DAY_ORDER_ERROR = "error"
+DAY_ORDER_TRANSITIONS = {
+    "start": {"start": 0.3, "error": 0.7},
+    "error": {"start": 0.8, "error": 0.2},
+}
+DAY_ORDER_FOCUS_CHANCE = 0.5
+
+INSTITUTE_GROUP_PREFIXES = {
+    "ИнЭУ": ("ЭК", "МТ"),
+    "ИНМиТ": ("МТ",),
+    "ИЕНиМ": ("БИ",),
+    "ИРИТ-РТФ": ("РИ", "ПИ", "ИС"),
+    "ИФКСиМП": ("БИ",),
+    "ИФО": ("РИ",),
+    "ИСА": ("ИС",),
+    "УГИ": ("ЭК",),
+    "УЭИ": ("ЭК",),
+    "ФТИ": ("ПИ",),
+    "ХТИ": ("БИ",),
+}
 NEXT_VISITOR_DELAY = 900
 INSTRUCTION_PANEL_WIDTH = 820
 INSTRUCTION_PANEL_HEIGHT = 520
@@ -672,3 +790,10 @@ STUDENT_CARD_PANEL_BORDER_COLOR = (20, 20, 20)
 STUDENT_CARD_PANEL_TEXT_COLOR = (20, 20, 20)
 STAMP_COLOR = (120, 35, 180)
 DENY_BUTTON_COLOR = (190, 0, 0)
+
+MIN_ISSUE_YEAR = 2024
+MAX_ISSUE_YEAR = 2024
+
+INSTRUCTION_DAY = "День {day}. Сегодняшние правила:"
+INSTRUCTION_DAY_ORDER = "Особое распоряжение: {day_order}"
+INSTRUCTION_SECTION_MAIN = "Основные правила:"

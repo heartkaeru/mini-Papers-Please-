@@ -35,6 +35,9 @@ class GameController:
         self.result_is_correct = True
         self.next_visitor_time = None
         self.active_slider = None
+        self.clock = pygame.time.Clock()
+        self.visitor_state = "NONE"
+        self.visitor_x = 0.0
 
         if not self.music_enabled:
             pygame.mixer.music.pause()
@@ -43,8 +46,9 @@ class GameController:
 
     def run(self):
         while self.view.running:
+            dt = self.clock.tick(60) / 1000.0
             self.handle_events()
-            self.update_game_state()
+            self.update_game_state(dt)
             self.draw_current_screen()
 
         pygame.quit()
@@ -58,11 +62,16 @@ class GameController:
                 self.sound_enabled,
                 self.music_volume,
                 self.sound_volume,
-                self.get_window_mode_text(),
             )
         elif self.screen_name == config.SCREEN_GAME:
+            day, date_str, time_str = self.game_model.get_time_info()
+            visitor_pos = (self.visitor_x, config.PERSON_RECT_Y) if self.visitor_visible else None
+            student_card_on_table = (self.visitor_state == "AT_DESK")
             self.view.draw_game(
                 self.get_balance(),
+                day,
+                date_str,
+                time_str,
                 self.get_current_person(),
                 self.visitor_visible,
                 self.student_card_open,
@@ -70,6 +79,8 @@ class GameController:
                 self.result_is_correct,
                 self.instruction_open,
                 self.get_instruction_lines(),
+                visitor_position=visitor_pos,
+                student_card_on_table=student_card_on_table,
             )
 
     def handle_events(self):
@@ -128,8 +139,6 @@ class GameController:
         elif self.slider_has_mouse(config.SLIDER_SOUND_VOLUME, mouse_pos):
             self.active_slider = config.SLIDER_SOUND_VOLUME
             self.set_sound_volume_by_mouse(mouse_pos)
-        elif buttons[config.BUTTON_WINDOW_SIZE].collidepoint(mouse_pos):
-            self.change_window_size()
         elif buttons[config.BUTTON_BACK].collidepoint(mouse_pos):
             self.screen_name = config.SCREEN_MENU
 
@@ -140,14 +149,15 @@ class GameController:
             return
         elif self.game_model.game_over:
             return
-        elif not self.visitor_visible:
+        elif not self.visitor_visible or self.visitor_state != "AT_DESK":
             return
         elif self.view.is_stamp_clicked(mouse_pos):
             self.make_decision(Decision.ALLOW)
         elif self.view.is_deny_button_clicked(mouse_pos):
             self.make_decision(Decision.DENY)
         elif self.has_current_document() and self.view.is_student_card_clicked(mouse_pos):
-            self.student_card_open = True
+            if self.visitor_state == "AT_DESK":
+                self.student_card_open = not self.student_card_open
 
     def handle_mouse_up(self):
         if self.active_slider is not None:
@@ -166,6 +176,8 @@ class GameController:
         self.instruction_open = False
         self.student_card_open = False
         self.visitor_visible = True
+        self.visitor_state = "WALKING_IN"
+        self.visitor_x = config.DEFAULT_WINDOW_WIDTH
         self.result_text = ""
         self.next_visitor_time = None
         self.screen_name = config.SCREEN_GAME
@@ -176,9 +188,25 @@ class GameController:
 
         self.game_started = True
         self.visitor_visible = True
+        self.visitor_state = "WALKING_IN"
+        self.visitor_x = config.DEFAULT_WINDOW_WIDTH
+        self.student_card_open = False
         self.screen_name = config.SCREEN_GAME
 
-    def update_game_state(self):
+    def update_game_state(self, dt):
+        if self.visitor_state == "WALKING_IN":
+            self.visitor_x -= 1000 * dt
+            if self.visitor_x <= config.PERSON_RECT_X:
+                self.visitor_x = config.PERSON_RECT_X
+                self.visitor_state = "AT_DESK"
+        elif self.visitor_state == "WALKING_OUT":
+            self.visitor_x -= 1000 * dt
+            if self.visitor_x <= -config.PERSON_RECT_WIDTH:
+                self.visitor_state = "NONE"
+                self.visitor_visible = False
+                if self.game_model and not self.game_model.game_over:
+                    self.next_visitor_time = pygame.time.get_ticks() + 200
+
         if self.next_visitor_time is None:
             return
 
@@ -186,6 +214,8 @@ class GameController:
             return
 
         self.visitor_visible = True
+        self.visitor_state = "WALKING_IN"
+        self.visitor_x = config.DEFAULT_WINDOW_WIDTH
         self.student_card_open = False
         self.result_text = ""
         self.next_visitor_time = None
@@ -194,14 +224,14 @@ class GameController:
         result = self.game_model.decide(decision)
         self.result_text = self.get_result_text(result)
         self.result_is_correct = result.is_correct
-        self.visitor_visible = False
+        self.visitor_state = "WALKING_OUT"
         self.student_card_open = False
 
         if result.game_over:
             self.result_text = result.game_over_reason
             self.next_visitor_time = None
         else:
-            self.next_visitor_time = pygame.time.get_ticks() + config.NEXT_VISITOR_DELAY
+            self.next_visitor_time = None
 
     def get_result_text(self, result):
         if result.is_correct:

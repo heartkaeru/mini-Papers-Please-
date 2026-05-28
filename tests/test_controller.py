@@ -64,6 +64,18 @@ class GameControllerTest(unittest.TestCase):
 
         self.assertEqual(text, config.RESULT_MISTAKE_TEXT.format(money_delta=-5))
 
+    def test_escape_opens_and_closes_menu(self):
+        self.controller.screen_name = config.SCREEN_GAME
+        self.controller.game_started = True
+
+        self.controller.handle_escape()
+        self.assertEqual(self.controller.screen_name, config.SCREEN_MENU)
+
+        self.controller.handle_escape()
+        self.assertEqual(self.controller.screen_name, config.SCREEN_GAME)
+
+
+
 
 if __name__ == "__main__":
     unittest.main()
