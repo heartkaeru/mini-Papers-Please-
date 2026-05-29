@@ -256,48 +256,23 @@ class GameRules:
         forms = ", ".join(self.valid_education_forms)
         levels = ", ".join(self.valid_education_levels)
         institutes = ", ".join(self.valid_institutes)
-        bad_institutes = ", ".join(config.BAD_INSTITUTES)
         group_rules = self.get_group_rules_text()
-        active_checks = get_active_checks(day_number)
+        
         lines = [
             config.INSTRUCTION_DAY.format(day=day_number),
         ]
-
-        if day_order != "":
-            lines.append(config.INSTRUCTION_DAY_ORDER.format(day_order=day_order))
-
-        lines.append(config.INSTRUCTION_SECTION_MAIN)
-
-        if config.CHECK_DOCUMENT in active_checks:
-            lines.append(config.INSTRUCTION_HAS_DOCUMENT)
-        if config.CHECK_BIRTH_DATE in active_checks:
-            lines.append(config.INSTRUCTION_BIRTH_YEAR.format(max_year=self.max_valid_birth_year))
-        if config.CHECK_ISSUE_DATE in active_checks:
-            lines.append(config.INSTRUCTION_ISSUE_DATE)
-        if config.CHECK_GROUP in active_checks:
-            lines.append(config.INSTRUCTION_GROUP)
-        if config.CHECK_EDUCATION_FORM in active_checks:
-            lines.append(config.INSTRUCTION_EDUCATION_FORM.format(forms=forms))
-        if config.CHECK_EDUCATION_LEVEL in active_checks:
-            lines.append(config.INSTRUCTION_EDUCATION_LEVEL.format(levels=levels))
-        if config.CHECK_INSTITUTE in active_checks:
-            lines.append(config.INSTRUCTION_INSTITUTE)
-
-        lines += [
-            config.INSTRUCTION_ALLOW_DENY,
-        ]
-
-        has_lists = (
-            config.CHECK_GROUP in active_checks
-            or config.CHECK_INSTITUTE in active_checks
-        )
-        if has_lists:
-            lines.append(config.INSTRUCTION_SECTION_LISTS)
-        if config.CHECK_GROUP in active_checks:
-            lines.append(config.INSTRUCTION_GROUP_LIST.format(groups=group_rules))
-        if config.CHECK_INSTITUTE in active_checks:
-            lines.append(config.INSTRUCTION_GOOD_INSTITUTES.format(institutes=institutes))
-            lines.append(config.INSTRUCTION_BAD_INSTITUTES.format(institutes=bad_institutes))
+            
+        day_instructions = config.INSTRUCTIONS_BY_DAY.get(day_number, config.INSTRUCTIONS_BY_DAY[1])
+        
+        for line in day_instructions:
+            formatted_line = line.format(
+                max_year=self.max_valid_birth_year,
+                forms=forms,
+                levels=levels,
+                institutes=institutes,
+                group_rules=group_rules
+            )
+            lines.append(formatted_line)
 
         return lines
 
