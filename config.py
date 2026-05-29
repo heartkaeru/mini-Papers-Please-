@@ -797,3 +797,7 @@ MAX_ISSUE_YEAR = 2024
 INSTRUCTION_DAY = "День {day}. Сегодняшние правила:"
 INSTRUCTION_DAY_ORDER = "Особое распоряжение: {day_order}"
 INSTRUCTION_SECTION_MAIN = "Основные правила:"
+INSTRUCTION_SECTION_LISTS = "Списки:"
+INSTRUCTION_GROUP_LIST = "Справочник групп: {groups}."
+INSTRUCTION_GOOD_INSTITUTES = "Разрешенные институты: {institutes}."
+INSTRUCTION_BAD_INSTITUTES = "Запрещенные институты: {institutes}."

@@ -63,6 +63,9 @@ class MarkovChain:
 
 
 def weighted_choice(variants, random_source):
+    if isinstance(variants, dict):
+        variants = list(variants.items())
+
     total_weight = 0
     for item, weight in variants:
         total_weight += weight
