@@ -38,6 +38,7 @@ class GameController:
         self.clock = pygame.time.Clock()
         self.visitor_state = "NONE"
         self.visitor_x = 0.0
+        self.leaving_person = None
 
         if not self.music_enabled:
             pygame.mixer.music.pause()
@@ -221,6 +222,7 @@ class GameController:
         self.next_visitor_time = None
 
     def make_decision(self, decision):
+        self.leaving_person = self.get_current_person()
         result = self.game_model.decide(decision)
         self.result_text = self.get_result_text(result)
         self.result_is_correct = result.is_correct
@@ -248,6 +250,9 @@ class GameController:
     def get_current_person(self):
         if self.game_model is None:
             return None
+
+        if self.visitor_state == "WALKING_OUT" and self.leaving_person is not None:
+            return self.leaving_person
 
         return self.game_model.current_person
 
